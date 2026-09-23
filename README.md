@@ -79,3 +79,8 @@ Bash
 ```text
 terraform destroy -var="environment=production" -auto-approve
 ```
+
+### Prerequisites
+* AWS CLI configured with active credentials.
+* Terraform v1.5.0+ installed.
+* An isolated S3 bucket for remote state locking (Bootstrapped out-of-band to prevent accidental destruction):
