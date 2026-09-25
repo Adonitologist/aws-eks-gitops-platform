@@ -39,7 +39,7 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 └── main.tf                        # Root module orchestration
 ```
 ## Deployment Instructions
-Prerequisites
+**Prerequisites**
 
     AWS CLI configured with active credentials.
 
@@ -47,37 +47,58 @@ Prerequisites
 
     Ensure your S3 bucket and DynamoDB table names are updated in backend.tf.
 
-Execution
+**Execution**
 
     Initialize the Environment:
-    Bash
+    ```bash
 
     terraform init
 
     Validate and Plan:
-    Bash
+    ```bash
 
     terraform validate
     terraform plan -var="environment=production"
 
     Deploy Infrastructure & Bootstrap GitOps:
-    Bash
+    ```bash
 
     terraform apply -var="environment=production" -auto-approve
 
     Verify GitOps Synchronization:
     Once Terraform finishes, ArgoCD will automatically take over. You can verify the Karpenter NodePools are active by querying the cluster:
-    Bash
+    ```bash
 
     aws eks update-kubeconfig --region us-east-1 --name eks-gitops-production
     kubectl get nodepools
 
-## Teardown
+## Safe Teardown Protocol (Cost Prevention)
 
-To prevent ongoing AWS charges, destroy the infrastructure. Note: Ensure all dynamic resources created by Kubernetes (like LoadBalancers created by Ingress) are deleted before running the Terraform destroy command.
-Bash
-```text
-terraform destroy -var="environment=production" -auto-approve
+Destroying a GitOps cluster strictly requires draining dynamic resources prior to invoking Terraform. Failure to do so will result in orphaned EC2 Spot instances and deadlocked VPC dependencies.
+
+1. **Destroy GitOps Workloads & Ingress:**
+   Remove the root application to force Argo CD to gracefully delete Ingress resources, signaling the AWS Load Balancer Controller to dismantle the physical ALBs.
+   ```bash
+   kubectl delete application root-application -n argocd
+
+2. **Drain Karpenter Capacity:**
+    Force Karpenter to cordorn and terminate all dynamically provisioned EC2 compute nodes to prevent ghost charges.
+   ```bash
+
+    kubectl delete nodepool --all
+    kubectl delete ec2nodeclass --all
+
+3. **Purge Orphaned Finalizers (If Namespace Deadlocked):**
+    If the argocd namespace hangs in Terminating state, force the release of lingering finalizers:
+   ```bash
+
+    kubectl patch application root-application -n argocd --type=merge -p '{"metadata":{"finalizers":[]}}'
+
+4. **Execute Core Infrastructure Destruction:**
+    Once the cluster is drained of runtime-injected resources, proceed to safely destroy the Terraform state.
+   ```bash
+
+    terraform destroy -auto-approve
 ```
 
 ### Prerequisites
