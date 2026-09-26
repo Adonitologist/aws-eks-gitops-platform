@@ -23,8 +23,17 @@ jobs:
         with:
           terraform_version: "1.5.0"
 
+      # Opcional pero recomendado: Configurar credenciales AWS para que 
+      # terraform init pueda descargar proveedores oficiales sin restricciones de rate-limit o auth
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::154932391641:role/github-actions-terraform-role-jeh
+          role-session-name: GitHubActionsValidationSession
+          aws-region: us-east-1
+
       - name: Terraform Init
-        run: terraform init -backend=false
+        run: terraform init -upgrade
 
       - name: Terraform Validate
         run: terraform validate
