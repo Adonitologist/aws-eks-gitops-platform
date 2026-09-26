@@ -1,8 +1,3 @@
-variable "aws_region" {
-  description = "Región principal de despliegue"
-  type        = string
-  default     = "us-east-1"
-}
 
 variable "environment" {
   description = "Entorno de ejecución"
