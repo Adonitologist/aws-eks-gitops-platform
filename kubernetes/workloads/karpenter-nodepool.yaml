@@ -3,7 +3,7 @@
 apiVersion: karpenter.k8s.aws/v1beta1
 kind: EC2NodeClass
 metadata:
-  name: default
+  name: entorno-juan-eslava
 spec:
   amiFamily: AL2
   role: "karpenter-node-eks-gitops-production"

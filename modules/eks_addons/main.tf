@@ -14,32 +14,6 @@ module "lb_role" {
   }
 }
 
-# 2. Helm Release for AWS Load Balancer Controller
-resource "helm_release" "aws_load_balancer_controller" {
-  name       = "aws-load-balancer-controller"
-  repository = "https://aws.github.io/eks-charts"
-  chart      = "aws-load-balancer-controller"
-  namespace  = "kube-system"
-  version    = "1.7.2"
-
-  set {
-    name  = "clusterName"
-    value = var.cluster_name
-  }
-  set {
-    name  = "serviceAccount.create"
-    value = "true"
-  }
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.lb_role.iam_role_arn
-  }
-}
-
 # 3. IAM Roles and Infrastructure for Karpenter (Pod Identity & Node Roles)
 module "karpenter" {
   source  = "terraform-aws-modules/eks/aws//modules/karpenter"
@@ -57,5 +31,58 @@ module "karpenter" {
   
   node_iam_role_additional_policies = {
     AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  }
+}
+
+resource "aws_eks_addon" "pod_identity_agent" {
+  cluster_name = var.cluster_name
+  addon_name   = "eks-pod-identity-agent"
+}
+
+resource "helm_release" "aws_load_balancer_controller" {
+  name       = "aws-load-balancer-controller"
+  repository = "https://aws.github.io/eks-charts"
+  chart      = "aws-load-balancer-controller"
+  namespace  = "kube-system"
+  version    = "1.8.1"
+
+  set {
+    name  = "clusterName"
+    value = var.cluster_name
+  }
+
+  set {
+    name  = "serviceAccount.create"
+    value = "true"
+  }
+
+  set {
+    name  = "serviceAccount.name"
+    value = "aws-load-balancer-controller"
+  }
+
+  set {
+    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = module.lb_role.iam_role_arn
+  }
+}
+
+resource "helm_release" "karpenter" {
+  name       = "karpenter"
+  repository = "oci://public.ecr.aws/karpenter"
+  chart      = "karpenter"
+  version    = "0.37.0"
+  namespace  = "kube-system"
+
+  depends_on = [aws_eks_addon.pod_identity_agent]
+
+  set {
+    name  = "settings.clusterName"
+    value = var.cluster_name
+  }
+
+  set {
+    name  = "settings.interruptionQueue"
+    value = module.karpenter.queue_name
   }
 }

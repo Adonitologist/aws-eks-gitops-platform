@@ -17,3 +17,8 @@ output "oidc_provider_url" {
   value       = module.eks.cluster_oidc_issuer_url
   description = "URL del emisor OIDC"
 }
+
+output "cluster_certificate_authority_data" {
+  value       = module.eks.cluster_certificate_authority_data
+  description = "Certificado Base64 de la Autoridad Certificadora (CA) del cluster EKS"
+}
