@@ -72,6 +72,15 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
     aws eks update-kubeconfig --region us-east-1 --name eks-gitops-production
     kubectl get nodepools
 
+### Post-Deploy Checklist
+
+The API endpoint is private-only, so run these from a host inside the VPC (or over VPN).
+
+1. Nodes are Ready: `kubectl get nodes` shows all system nodes in `Ready`.
+2. Image pulls work (private subnets reach the internet only on TCP 443 through the NAT): `kubectl get pods -A` shows no `ImagePullBackOff` or `ErrImagePull`.
+3. CoreDNS is resolving: `kubectl -n kube-system get pods -l k8s-app=kube-dns` are `Running`, and `kubectl run dns-test --rm -it --restart=Never --image=busybox:1.36 -- nslookup kubernetes.default` returns an answer.
+4. Flow logs are flowing: the CloudWatch log group for `vpc-eks-gitops-<environment>` receives events.
+
 ## Safe Teardown Protocol (Cost Prevention)
 
 Destroying a GitOps cluster strictly requires draining dynamic resources prior to invoking Terraform. Failure to do so will result in orphaned EC2 Spot instances and deadlocked VPC dependencies.

@@ -7,6 +7,7 @@ module "vpc" {
   environment  = var.environment
   cluster_name = local.cluster_name
   vpc_cidr     = var.vpc_cidr
+  azs          = var.azs
 }
 
 module "eks_cluster" {
@@ -15,7 +16,7 @@ module "eks_cluster" {
   cluster_name = local.cluster_name
   vpc_id       = module.vpc.vpc_id
   subnet_ids   = module.vpc.private_subnet_ids
-  
+
   depends_on = [module.vpc]
 }
 
