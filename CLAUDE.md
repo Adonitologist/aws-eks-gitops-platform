@@ -35,7 +35,7 @@ Root module (`main.tf`) wires four modules in a strict chain via `depends_on`: `
 - `contexto_*.txt` / `estado_repositorio.txt` in the root are scratch dumps (git-ignored), not part of the project.
 
 ## Output limits
-- Always run plan as: terraform plan -no-color -compact-warnings 2>&1 | tail -n 40
+- Always run plan as: terraform plan -lock=false -no-color -compact-warnings 2>&1 | tail -n 40
 - Never read full plan output or full debug logs; use tail/grep.
 
 ## AWS/Terraform quality standards (mandatory)
@@ -52,3 +52,4 @@ Root module (`main.tf`) wires four modules in a strict chain via `depends_on`: `
 - After plan, explicitly warn about any resource replacement or destruction.
 
 - tfsec:ignore lines must sit directly above the module line (one ID per line); justification comments go above them, never between.
+
