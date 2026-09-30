@@ -28,7 +28,7 @@ module "karpenter" {
   # IAM role for the EC2 nodes provisioned by Karpenter
   create_node_iam_role = true
   node_iam_role_name   = "karpenter-node-${var.cluster_name}"
-  
+
   node_iam_role_additional_policies = {
     AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
   }

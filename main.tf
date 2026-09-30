@@ -32,7 +32,7 @@ module "eks_addons" {
 module "gitops_argocd" {
   source       = "./modules/gitops_argocd"
   cluster_name = module.eks_cluster.cluster_name
-  
+
   depends_on = [module.eks_addons]
 }
 

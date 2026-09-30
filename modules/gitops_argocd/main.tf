@@ -19,15 +19,15 @@ resource "helm_release" "argocd" {
         }
         # Deshabilitar TLS interno para permitir SSL offloading en el AWS ALB
         extraArgs = ["--insecure"]
-        
+
         ingress = {
           enabled          = true
           ingressClassName = "alb"
           annotations = {
-            "alb.ingress.kubernetes.io/scheme"       = "internet-facing"
-            "alb.ingress.kubernetes.io/target-type"  = "ip"
+            "alb.ingress.kubernetes.io/scheme"           = "internet-facing"
+            "alb.ingress.kubernetes.io/target-type"      = "ip"
             "alb.ingress.kubernetes.io/backend-protocol" = "HTTP"
-            "alb.ingress.kubernetes.io/listen-ports" = "[{\"HTTP\": 80}]"
+            "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}]"
           }
           # Enrutamiento base para la interfaz de usuario
           paths = ["/"]
