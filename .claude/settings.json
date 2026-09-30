@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(terraform validate)",
+      "Bash(terraform fmt:*)",
+      "Bash(tflint:*)",
+      "Bash(tfsec:*)"
+    ],
+    "deny": [
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(terraform import:*)",
+      "Bash(terraform state:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(kubectl delete:*)",
+      "Bash(git push:*)",
+      "Read(./contexto_*.txt)",
+      "Read(./estado_repositorio.txt)"
+    ]
+  }
+}
