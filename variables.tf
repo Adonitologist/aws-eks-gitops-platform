@@ -1,4 +1,3 @@
-# tflint-ignore: terraform_unused_declarations
 variable "aws_region" {
   description = "Región principal de despliegue"
   type        = string
