@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Pure Terraform repo (no app code, no test suite). CI (`.github/workflows/ci.yml`) runs these in order, using Terraform 1.9.0:
+Pure Terraform repo (no app code, no test suite). CI (`.github/workflows/ci.yml`) runs these in order, using Terraform 1.15.6:
 
 ```bash
 terraform init                      # remote S3 backend; CI also passes -upgrade
@@ -30,7 +30,7 @@ Root module (`main.tf`) wires four modules in a strict chain via `depends_on`: `
 - `modules/vpc` is the single VPC (flow logs, dedicated NACLs, `azs` variable defaulted in the root). `eks_cluster` consumes `vpc_id`/`subnet_ids`; there is no inline VPC anymore. NACLs are tight: private subnets reach the internet only on TCP 443 (via NAT), so anything needing plain HTTP 80 egress fails.
 - tfsec findings from upstream modules are silenced with `#tfsec:ignore:<ID>` lines directly above the `module` line (see `modules/vpc/main.tf`, `modules/eks_cluster/main.tf`); justifications go above them.
 - `modules/eks_cluster/main.tf` still hardcodes `cluster_version = "1.31"` and `instance_types = ["t3.micro"]`; the `cluster_version` / `system_node_instance_types` variables exist but are unused. README badges are stale (Kubernetes v1.30, Terraform v1.5+).
-- Backend bucket is hardcoded in `backend.tf` (S3 only; no state locking: no DynamoDB table, no `use_lockfile`). `use_lockfile = true` needs Terraform >= 1.10, but CI pins 1.9.0 (`ci.yml` lines 24 and 68) and `init` would fail on it. To enable it: bump both CI versions first, then add it to `backend.tf`; the CI role also needs write/delete on the lock object next to the state key. Local plans use a read-only profile, so once locking is on they must pass `-lock=false`. Changing the backend may need `terraform init -reconfigure`.
+- Backend bucket is hardcoded in `backend.tf` (S3 only; no state locking: no DynamoDB table, no `use_lockfile`). `use_lockfile = true` needs Terraform >= 1.10 and CI now pins 1.15.6 (`ci.yml` lines 24 and 68), so it is possible. Before adding it to `backend.tf`, the CI role needs write/delete on the lock object next to the state key. Local plans use a read-only profile, so once locking is on they must pass `-lock=false`. Changing the backend may need `terraform init -reconfigure`.
 - Comments and variable descriptions are a mix of Spanish and English; global rule is English for new code.
 - `contexto_*.txt` / `estado_repositorio.txt` in the root are scratch dumps (git-ignored), not part of the project.
 
