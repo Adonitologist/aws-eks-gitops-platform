@@ -21,7 +21,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3.1.2
         with:
-          terraform_version: "1.9.0"
+          terraform_version: "1.15.6"
 
       # Opcional pero recomendado: Configurar credenciales AWS para que 
       # terraform init pueda descargar proveedores oficiales sin restricciones de rate-limit o auth
@@ -65,7 +65,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3.1.2
         with:
-          terraform_version: "1.9.0" # Or whichever version >= 1.6.0 you currently use locally
+          terraform_version: "1.15.6"
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.0.2
