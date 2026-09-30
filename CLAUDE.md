@@ -53,3 +53,4 @@ Root module (`main.tf`) wires four modules in a strict chain via `depends_on`: `
 
 - tfsec:ignore lines must sit directly above the module line (one ID per line); justification comments go above them, never between.
 
+- GitHub OIDC uses immutable subject: sub = repo:Adonitologist@90419501/aws-eks-gitops-platform@1383441716:<ref|pull_request>. Trust policy must use these exact values with StringEquals, no wildcards.
