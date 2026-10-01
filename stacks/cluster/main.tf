@@ -1,7 +1,3 @@
-terraform {
-  required_version = ">= 1.5.0"
-}
-
 data "terraform_remote_state" "infra" {
   backend = "s3"
   config = {
