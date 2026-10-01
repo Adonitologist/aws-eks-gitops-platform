@@ -7,7 +7,7 @@ module "eks" {
   version = "~> 20.0"
 
   cluster_name    = var.cluster_name
-  cluster_version = "1.31"
+  cluster_version = var.cluster_version
 
   vpc_id     = var.vpc_id
   subnet_ids = var.subnet_ids
@@ -27,10 +27,10 @@ module "eks" {
   eks_managed_node_groups = {
     system_components = {
       ami_type       = "AL2023_x86_64_STANDARD"
-      instance_types = ["t3.micro"]
-      min_size       = 3
-      desired_size   = 4
-      max_size       = 5
+      instance_types = var.system_node_instance_types
+      min_size       = var.system_node_min_size
+      desired_size   = var.system_node_desired_size
+      max_size       = var.system_node_max_size
 
       # Subnets estrictamente privadas para los nodos de trabajo
       subnet_ids = var.subnet_ids
