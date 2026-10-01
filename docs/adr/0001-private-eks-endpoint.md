@@ -51,7 +51,7 @@
   data source exposes no status attribute (verified from the AWS provider 5.x schema), so an addon
   that exists but is not yet active passes the check.
 - Temporary CI setting: `tflint` runs with `--recursive --minimum-failure-severity=error`
-  because 14 module warnings predate the split. The flag is to be removed in the cleanup PR once
+  because 12 module warnings predate the split. The flag is to be removed in the cleanup PR once
   warnings reach zero.
 - Apply order is infra, then cluster. Teardown is the reverse (see README).
 
@@ -67,7 +67,8 @@
 
 | Issue | Status | Detail |
 |---|---|---|
-| `t3.micro` pod limit | to verify | Managed node group `system_components` uses `t3.micro` (min 3, desired 4, max 5). With the default VPC CNI the AWS-documented limit for `t3.micro` is expected to be 4 pods per node, and `aws-node`, `kube-proxy` and the Pod Identity agent are DaemonSets that consume slots. Not checked against the AWS limits table or a live cluster. |
+| `t3.micro` pod limit | to verify (max pods) | Sizing changed to `t3.medium`, min 2 / desired 2 / max 3 (variables `system_node_*` in `modules/eks_cluster`). Verified with `describe-instance-types`: `t3.micro` 2 ENIs x 2 IPv4, `t3.small` 3 x 4, `t3.medium` 3 x 6; the VPC CNI formula gives 4, 11 and 17 max pods. Verified from `helm template`: the system pods need 13 pod slots (Argo CD 7, LB controller 2, Karpenter 2, CoreDNS 2) and Karpenter has hard per-host anti-affinity (needs 2 nodes). To verify on a live node: the actual max pods (`kubectl get node -o jsonpath='{..allocatable.pods}'`), DaemonSet slot use (`aws-node`, `kube-proxy`, Pod Identity agent assumed to take 3 per node), and real memory use (the charts set no resource requests). |
+| EKS `cluster_version = "1.31"` | verified | `aws eks describe-cluster-versions` (2026-10-01): 1.31 is in `EXTENDED_SUPPORT` (standard support ended 2025-11-26, extended support ends 2026-11-26). Standard support: 1.34 to 1.36. The version is unchanged pending a decision; extended support pricing is not recorded here (see the AWS EKS pricing page). |
 | `karpenter-nodepool.yaml`: name mismatch | verified | The `EC2NodeClass` is named `entorno-juan-eslava` but the `NodePool` `nodeClassRef.name` is `default`, so the reference does not resolve. |
 | `karpenter-nodepool.yaml`: `amiFamily: AL2` | partly verified | Verified: the system node group uses `AL2023_x86_64_STANDARD`, so the two disagree. To verify: whether AL2 AMIs are still available for the cluster version (`1.31`) and supported by Karpenter v0.37.0. |
 | Hardcoded Karpenter node role name | verified | `karpenter-nodepool.yaml` sets `role: "karpenter-node-eks-gitops-production"`. The Terraform role is `karpenter-node-${cluster_name}` with `cluster_name = eks-gitops-${environment}`. They match only when `environment = production` (the default); the discovery tags use the same hardcoded cluster name. |
