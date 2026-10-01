@@ -29,11 +29,21 @@ module "eks_addons" {
   depends_on = [module.eks_cluster]
 }
 
+module "eks_addons_helm" {
+  source               = "./modules/eks_addons_helm"
+  cluster_name         = module.eks_cluster.cluster_name
+  lb_role_arn          = module.eks_addons.lb_role_arn
+  karpenter_queue_name = module.eks_addons.karpenter_queue_name
+
+  # Karpenter needs the Pod Identity agent (created in eks_addons) before it starts
+  depends_on = [module.eks_addons]
+}
+
 module "gitops_argocd" {
   source       = "./modules/gitops_argocd"
   cluster_name = module.eks_cluster.cluster_name
 
-  depends_on = [module.eks_addons]
+  depends_on = [module.eks_addons_helm]
 }
 
 locals {
