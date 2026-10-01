@@ -18,7 +18,7 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 ## Core Technical Highlights
 
 * **App of Apps Pattern:** The `root-app.yaml` dictates the entire cluster configuration. Any unauthorized manual changes made via `kubectl` are automatically detected and overwritten by ArgoCD to enforce Git as the single source of truth.
-* **Remote State Management:** Terraform state is securely locked and stored remotely using Amazon S3 and DynamoDB, enabling safe CI/CD pipeline execution.
+* **Remote State Management:** Terraform state is stored remotely in Amazon S3 with native S3 state locking (`use_lockfile`, no DynamoDB), in two separate states (see [ADR 0001](docs/adr/0001-private-eks-endpoint.md)).
 * **Automated Quality Gates:** Integrated GitHub Actions pipeline enforces syntax validation, `tflint` standards, and `tfsec` static security analysis on every commit.
 * **SSL Offloading Prepared:** ArgoCD is deployed securely in ClusterIP mode without internal TLS, architected to allow the AWS Load Balancer Controller to handle Ingress routing and certificate termination.
 
@@ -30,47 +30,49 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 ├── modules/
 │   ├── vpc/                       # Network topology and discovery tags
 │   ├── eks_cluster/               # Control plane, OIDC, and System Node Group
-│   ├── eks_addons/                # AWS Load Balancer Controller and IAM Roles
-│   └── gitops_argocd/             # ArgoCD Operator bootstrap via Helm
+│   ├── eks_addons/                # IAM roles, SQS, Pod Identity (stage 1)
+│   ├── eks_addons_helm/           # AWS Load Balancer Controller and Karpenter via Helm (stage 2)
+│   └── gitops_argocd/             # ArgoCD Operator bootstrap via Helm (stage 2)
+├── stacks/
+│   ├── infra/                     # Stage 1: vpc, eks_cluster, eks_addons (state: terraform.tfstate)
+│   └── cluster/                   # Stage 2: Helm releases and ArgoCD (state: cluster.tfstate)
 ├── kubernetes/
 │   ├── argocd-apps/               # Root application controller
 │   └── workloads/                 # Karpenter NodePools and dynamic deployments
-├── backend.tf                     # S3 + DynamoDB remote state configuration
-└── main.tf                        # Root module orchestration
+└── docs/adr/                      # Architecture decision records
 ```
+
+Design decisions: [ADR 0001: private EKS endpoint and two-stage split](docs/adr/0001-private-eks-endpoint.md).
 ## Deployment Instructions
 **Prerequisites**
 
-    AWS CLI configured with active credentials.
+* AWS CLI configured with active credentials.
+* Terraform v1.10+ (native S3 locking; CI uses 1.15.6).
+* An isolated S3 bucket for remote state, bootstrapped out-of-band to prevent accidental destruction. Its name in `stacks/infra/backend.tf` and `stacks/cluster/backend.tf` must point to it.
 
-    Terraform v1.5.0+ installed.
+**Apply order: infra, then cluster**
 
-    Ensure your S3 bucket and DynamoDB table names are updated in backend.tf.
+The stacks have separate states and must be applied in this order. Stage 2 reads stage-1 outputs and requires the Pod Identity agent addon created by stage 1 (a cross-stack `depends_on` is not possible, so `stacks/cluster` fails its plan if the addon is missing). Stage 2 must run from a host with a network path to the private EKS endpoint; see [ADR 0001](docs/adr/0001-private-eks-endpoint.md) for the known constraint and the known issues to fix before the first apply.
 
-**Execution**
-
-    Initialize the Environment:
-    ```bash
-
-    terraform init
-
-    Validate and Plan:
-    ```bash
-
-    terraform validate
-    terraform plan -var="environment=production"
-
-    Deploy Infrastructure & Bootstrap GitOps:
-    ```bash
-
-    terraform apply -var="environment=production" -auto-approve
-
-    Verify GitOps Synchronization:
-    Once Terraform finishes, ArgoCD will automatically take over. You can verify the Karpenter NodePools are active by querying the cluster:
-    ```bash
-
-    aws eks update-kubeconfig --region us-east-1 --name eks-gitops-production
-    kubectl get nodepools
+1. Stage 1, AWS resources (VPC, EKS, IAM, SQS, Pod Identity):
+   ```bash
+   cd stacks/infra
+   terraform init
+   terraform plan -var="environment=production"
+   terraform apply -var="environment=production"
+   ```
+2. Stage 2, Helm releases and Argo CD:
+   ```bash
+   cd stacks/cluster
+   terraform init
+   terraform plan
+   terraform apply
+   ```
+3. Verify GitOps synchronization. Argo CD takes over and syncs `kubernetes/workloads`:
+   ```bash
+   aws eks update-kubeconfig --region us-east-1 --name eks-gitops-production
+   kubectl get nodepools
+   ```
 
 ### Post-Deploy Checklist
 
@@ -85,32 +87,41 @@ The API endpoint is private-only, so run these from a host inside the VPC (or ov
 
 Destroying a GitOps cluster strictly requires draining dynamic resources prior to invoking Terraform. Failure to do so will result in orphaned EC2 Spot instances and deadlocked VPC dependencies.
 
+Teardown is the reverse of the apply order: cluster stack first, then infra.
+
 1. **Destroy GitOps Workloads & Ingress:**
    Remove the root application to force Argo CD to gracefully delete Ingress resources, signaling the AWS Load Balancer Controller to dismantle the physical ALBs.
    ```bash
    kubectl delete application root-application -n argocd
+   ```
 
-2. **Drain Karpenter Capacity:**
-    Force Karpenter to cordorn and terminate all dynamically provisioned EC2 compute nodes to prevent ghost charges.
+2. **Wait for the ALBs to disappear:**
+   Do not continue while load balancers created by the controller still exist, or the VPC cannot be deleted.
    ```bash
+   aws elbv2 describe-load-balancers --query "LoadBalancers[].LoadBalancerName"
+   ```
 
-    kubectl delete nodepool --all
-    kubectl delete ec2nodeclass --all
-
-3. **Purge Orphaned Finalizers (If Namespace Deadlocked):**
-    If the argocd namespace hangs in Terminating state, force the release of lingering finalizers:
+3. **Drain Karpenter Capacity:**
+   Force Karpenter to cordon and terminate all dynamically provisioned EC2 compute nodes to prevent ghost charges.
    ```bash
+   kubectl delete nodepool --all
+   kubectl delete ec2nodeclass --all
+   ```
 
-    kubectl patch application root-application -n argocd --type=merge -p '{"metadata":{"finalizers":[]}}'
-
-4. **Execute Core Infrastructure Destruction:**
-    Once the cluster is drained of runtime-injected resources, proceed to safely destroy the Terraform state.
+4. **Purge Orphaned Finalizers (If Namespace Deadlocked):**
+   If the argocd namespace hangs in Terminating state, force the release of lingering finalizers:
    ```bash
+   kubectl patch application root-application -n argocd --type=merge -p '{"metadata":{"finalizers":[]}}'
+   ```
 
-    terraform destroy -auto-approve
-```
+5. **Destroy the cluster stack (stage 2):**
+   ```bash
+   cd stacks/cluster
+   terraform destroy
+   ```
 
-### Prerequisites
-* AWS CLI configured with active credentials.
-* Terraform v1.5.0+ installed.
-* An isolated S3 bucket for remote state locking (Bootstrapped out-of-band to prevent accidental destruction):
+6. **Destroy the infra stack (stage 1):**
+   ```bash
+   cd stacks/infra
+   terraform destroy
+   ```
