@@ -79,7 +79,29 @@ module "karpenter" {
   }
 }
 
-resource "aws_eks_addon" "pod_identity_agent" {
-  cluster_name = var.cluster_name
-  addon_name   = "eks-pod-identity-agent"
+# 4. EKS managed add-ons with pinned versions. Created through the EKS API, so the private
+# cluster endpoint is not needed. The caller (stacks/infra) creates them after the cluster
+# and its managed node group, which CoreDNS needs in order to become ACTIVE.
+locals {
+  managed_addons = {
+    "vpc-cni"                = var.vpc_cni_version
+    "coredns"                = var.coredns_version
+    "kube-proxy"             = var.kube_proxy_version
+    "eks-pod-identity-agent" = var.pod_identity_agent_version
+  }
+}
+
+resource "aws_eks_addon" "managed" {
+  for_each = local.managed_addons
+
+  cluster_name  = var.cluster_name
+  addon_name    = each.key
+  addon_version = each.value
+
+  # The cluster bootstraps self-managed vpc-cni, kube-proxy and CoreDNS by default
+  # (bootstrap_self_managed_addons is left unset), so adopting them as managed add-ons needs
+  # OVERWRITE on create; with NONE the create fails on field conflicts. OVERWRITE on update
+  # keeps the add-on equal to the pinned version and configuration, reverting manual edits.
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "OVERWRITE"
 }
