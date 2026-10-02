@@ -20,7 +20,7 @@ provider "aws" {
   region = var.aws_region
 }
 
-# Proveedor para desplegar ArgoCD via Helm Chart
+# Provider to deploy ArgoCD via Helm chart
 provider "helm" {
   kubernetes {
     host                   = data.terraform_remote_state.infra.outputs.cluster_endpoint
@@ -34,7 +34,7 @@ provider "helm" {
   }
 }
 
-# Proveedor para crear recursos nativos (como el namespace de ArgoCD)
+# Provider to create native resources (such as the ArgoCD namespace)
 provider "kubernetes" {
   host                   = data.terraform_remote_state.infra.outputs.cluster_endpoint
   cluster_ca_certificate = base64decode(data.terraform_remote_state.infra.outputs.cluster_certificate_authority_data)

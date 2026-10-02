@@ -1,17 +1,17 @@
 variable "aws_region" {
-  description = "Región principal de despliegue"
+  description = "Primary deployment region"
   type        = string
   default     = "us-east-1"
 }
 
 variable "environment" {
-  description = "Entorno de ejecución"
+  description = "Execution environment"
   type        = string
   default     = "production"
 }
 
 variable "vpc_cidr" {
-  description = "Bloque CIDR principal para la VPC"
+  description = "Primary CIDR block for the VPC"
   type        = string
   default     = "10.0.0.0/16"
 }

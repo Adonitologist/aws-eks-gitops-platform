@@ -1,14 +1,14 @@
 output "vpc_id" {
   value       = module.vpc.vpc_id
-  description = "ID de la VPC principal"
+  description = "ID of the main VPC"
 }
 
 output "private_subnet_ids" {
   value       = module.vpc.private_subnets
-  description = "Lista de IDs de subredes privadas para los nodos de EKS"
+  description = "List of private subnet IDs for the EKS nodes"
 }
 
 output "public_subnet_ids" {
   value       = module.vpc.public_subnets
-  description = "Lista de IDs de subredes públicas para los balanceadores de carga"
+  description = "List of public subnet IDs for the load balancers"
 }
