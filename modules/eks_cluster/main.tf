@@ -12,11 +12,11 @@ module "eks" {
   vpc_id     = var.vpc_id
   subnet_ids = var.subnet_ids
 
-  # Endpoint 100% privado. Sin exposicion a internet publica.
+  # 100% private endpoint. No exposure to the public internet.
   cluster_endpoint_public_access  = false
   cluster_endpoint_private_access = true
 
-  # Logs de auditoria y control plane activados
+  # Audit and control plane logs enabled
   cluster_enabled_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
   enable_irsa = true
@@ -32,7 +32,7 @@ module "eks" {
       desired_size   = var.system_node_desired_size
       max_size       = var.system_node_max_size
 
-      # Subnets estrictamente privadas para los nodos de trabajo
+      # Strictly private subnets for the worker nodes
       subnet_ids = var.subnet_ids
     }
   }
