@@ -27,3 +27,8 @@ output "karpenter_queue_name" {
   description = "Name of the SQS interruption queue for Karpenter (consumed by stacks/cluster)"
   value       = module.eks_addons.karpenter_queue_name
 }
+
+output "karpenter_node_role_name" {
+  description = "Name of the IAM role for the EC2 nodes provisioned by Karpenter (must match the EC2NodeClass role)"
+  value       = module.eks_addons.karpenter_node_role_name
+}

@@ -23,9 +23,9 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 
 - `modules/eks_cluster`: wraps `terraform-aws-modules/eks/aws ~> 20.0`. Private-only API endpoint, IRSA on, `API_AND_CONFIG_MAP` auth, one managed node group `system_components` (default t3.medium, min 2 / desired 2 / max 3, via `system_node_*` variables; the system pods need about 13 pod slots and Karpenter needs 2 nodes). Exposes the OIDC ARN/URL consumed by `eks_addons`.
 - `modules/eks_addons` (stage 1): IRSA role for AWS Load Balancer Controller, Karpenter IAM/SQS/Pod Identity (`terraform-aws-modules/eks//modules/karpenter`), the `eks-pod-identity-agent` addon. Outputs `lb_role_arn` and `karpenter_queue_name`.
-- `modules/eks_addons_helm` (stage 2): Helm releases for the LB controller and Karpenter (`oci://public.ecr.aws/karpenter`, v0.37.0).
+- `modules/eks_addons_helm` (stage 2): Helm releases for the LB controller and Karpenter (`oci://public.ecr.aws/karpenter`, v1.14.1).
 - `modules/gitops_argocd` (stage 2): `argocd` namespace plus Helm release of Argo CD, ClusterIP service with `--insecure` and an ALB ingress (TLS terminates at the ALB).
-- `kubernetes/`: not managed by Terraform. `argocd-apps/root-app.yaml` is the App-of-Apps root (auto-sync, prune, selfHeal) pointing at `kubernetes/workloads` on `main` of the GitHub repo; Karpenter NodePool/EC2NodeClass manifests live there. Pushing manifests changes the live cluster.
+- `kubernetes/`: not managed by Terraform. `argocd-apps/root-app.yaml` is the App-of-Apps root (auto-sync, prune, selfHeal) pointing at `kubernetes/workloads` on `main` of the GitHub repo; Karpenter v1 NodePool/EC2NodeClass manifests live there (role and discovery tag are fixed strings that must match Terraform, see ADR). Pushing manifests changes the live cluster.
 
 ## Gotchas
 

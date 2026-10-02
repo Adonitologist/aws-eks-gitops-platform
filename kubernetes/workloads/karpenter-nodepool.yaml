@@ -1,11 +1,16 @@
 ---
 # EC2NodeClass defines AWS-specific infrastructure configuration
-apiVersion: karpenter.k8s.aws/v1beta1
+# role and the discovery tag value are fixed strings: Argo CD applies this directory as plain YAML.
+# They must match Terraform: role = output karpenter_node_role_name (karpenter-node-<cluster_name>),
+# tag value = cluster_name (eks-gitops-<environment>). Values below are for environment=production.
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
-  name: entorno-juan-eslava
+  name: default
 spec:
-  amiFamily: AL2
+  # Pinned EKS-optimized AL2023 release; bump deliberately (alias per Kubernetes minor is resolved from the cluster)
+  amiSelectorTerms:
+    - alias: al2023@v20260930
   role: "karpenter-node-eks-gitops-production"
   subnetSelectorTerms:
     - tags:
@@ -19,7 +24,7 @@ spec:
 
 ---
 # NodePool sets configuration for the Kubernetes nodes
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   name: default
@@ -37,12 +42,13 @@ spec:
           operator: In
           values: ["spot", "on-demand"]
       nodeClassRef:
-        apiVersion: karpenter.k8s.aws/v1beta1
+        group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: default
+      expireAfter: 720h # 30 days
   limits:
     cpu: "100"
     memory: 100Gi
   disruption:
-    consolidationPolicy: WhenUnderutilized
-    expireAfter: 720h # 30 days
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
