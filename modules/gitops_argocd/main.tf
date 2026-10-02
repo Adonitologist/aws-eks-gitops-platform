@@ -17,7 +17,7 @@ resource "helm_release" "argocd" {
         service = {
           type = "ClusterIP"
         }
-        # Deshabilitar TLS interno para permitir SSL offloading en el AWS ALB
+        # Disable internal TLS to allow SSL offloading at the AWS ALB
         extraArgs = ["--insecure"]
 
         ingress = {
@@ -29,7 +29,7 @@ resource "helm_release" "argocd" {
             "alb.ingress.kubernetes.io/backend-protocol" = "HTTP"
             "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}]"
           }
-          # Enrutamiento base para la interfaz de usuario
+          # Base routing for the user interface
           paths = ["/"]
         }
       }
