@@ -14,6 +14,8 @@ module "lb_role" {
   }
 }
 
+data "aws_region" "current" {}
+
 # 3. IAM Roles and Infrastructure for Karpenter (Pod Identity & Node Roles)
 module "karpenter" {
   source  = "terraform-aws-modules/eks/aws//modules/karpenter"
@@ -25,9 +27,36 @@ module "karpenter" {
   enable_pod_identity             = true
   create_pod_identity_association = true
 
-  # IAM role for the EC2 nodes provisioned by Karpenter
-  create_node_iam_role = true
-  node_iam_role_name   = "karpenter-node-${var.cluster_name}"
+  # Permissions for Karpenter v1.x; the module default (false) is the v0.33-v0.37 policy
+  enable_v1_permissions = true
+
+  # Actions required by Karpenter v1.14.1 that module v20.37.2 does not yet grant
+  # (source: v1.14.1 getting-started cloudformation.yaml)
+  iam_policy_statements = [
+    {
+      sid       = "AllowRegionalReadActionsExtra"
+      effect    = "Allow"
+      actions   = ["ec2:DescribeCapacityReservations", "ec2:DescribeInstanceStatus", "ec2:DescribePlacementGroups"]
+      resources = ["*"] # EC2 Describe* actions do not support resource-level permissions
+      conditions = [{
+        test     = "StringEquals"
+        variable = "aws:RequestedRegion"
+        values   = [data.aws_region.current.name]
+      }]
+    },
+    {
+      sid       = "AllowUnscopedInstanceProfileListAction"
+      effect    = "Allow"
+      actions   = ["iam:ListInstanceProfiles"]
+      resources = ["*"] # iam:ListInstanceProfiles does not support resource-level permissions
+    },
+  ]
+
+  # IAM role for the EC2 nodes provisioned by Karpenter. The exact name (no random suffix)
+  # is referenced by the EC2NodeClass in kubernetes/workloads/karpenter-nodepool.yaml
+  create_node_iam_role          = true
+  node_iam_role_name            = "karpenter-node-${var.cluster_name}"
+  node_iam_role_use_name_prefix = false
 
   node_iam_role_additional_policies = {
     AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
