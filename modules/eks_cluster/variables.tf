@@ -19,9 +19,9 @@ variable "subnet_ids" {
 }
 
 variable "cluster_version" {
-  description = "Versión de Kubernetes para el plano de control de EKS"
+  description = "Versión de Kubernetes para el plano de control de EKS. Política: una versión menor por detrás de la última, con soporte estándar hasta 2027-03-27 (1.35)"
   type        = string
-  default     = "1.31"
+  default     = "1.35"
 }
 
 variable "system_node_instance_types" {
