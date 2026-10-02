@@ -33,7 +33,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 - tfsec findings from upstream modules are silenced with `#tfsec:ignore:<ID>` lines directly above the `module` line (see `modules/vpc/main.tf`, `modules/eks_cluster/main.tf`); justifications go above them.
 - `modules/eks_cluster` takes `cluster_version` (default "1.35", one minor behind the latest, standard support until 2027-03-27; not to be applied before the Argo CD and LB controller PRs are merged, see the ADR) and `system_node_*` from variables. The README Terraform badge is stale (v1.5+).
 - Backend bucket is hardcoded in `stacks/infra/backend.tf` and `stacks/cluster/backend.tf` (S3 only, `use_lockfile = true`, no DynamoDB; needs Terraform >= 1.10 and CI pins 1.15.6 at `ci.yml` lines 24 and 62). The CI role needs write/delete on the `.tflock` object next to the state key. Local plans use a read-only profile, so they must pass `-lock=false`. Changing the backend may need `terraform init -reconfigure`.
-- Comments and variable descriptions are a mix of Spanish and English; global rule is English for new code.
+- English only: comments, variable and output descriptions, error messages, YAML comments and docs are all in English.
 - `contexto_*.txt` / `estado_repositorio.txt` in the root are scratch dumps (git-ignored), not part of the project.
 
 ## Output limits
