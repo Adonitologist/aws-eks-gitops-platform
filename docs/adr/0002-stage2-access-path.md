@@ -53,9 +53,15 @@ when stopped while idle; the existing single NAT gateway is reused (no new fixed
    docs state that the cluster security group rules control access to the private endpoint. Egress
    to the internet goes through the existing NAT gateway; no VPC endpoints are added.
 6. Tooling is pinned and installed by `user_data` with SHA256 verification: Terraform 1.15.6 and
-   kubectl 1.35.9 (both variables of the module, with their checksums).
+   kubectl 1.35.9 (both variables of the module, with their checksums). The SHA256 values were
+   copied over TLS from the same hosts that serve the binaries (`releases.hashicorp.com`,
+   `dl.k8s.io`), so they detect corruption but not a compromised host. GPG verification of the
+   Terraform `SHA256SUMS` file is a follow-up.
 7. Session Manager sessions are logged to a CloudWatch Logs group (retention 90 days by default)
-   through the account default preferences document `SSM-SessionManagerRunShell`.
+   through a Session document used only by this runner (`<cluster_name>-stage2-runner-session`).
+   Sessions get its logging and idle timeout only when started with `--document-name`; the
+   `ssm_session_command` output already includes it. The account default document
+   `SSM-SessionManagerRunShell` is not managed by this repository.
 8. CI planning of stage 2 stays out of scope.
 
 ### Why an operator-run host does not violate ADR 0001 decision 2
@@ -77,28 +83,41 @@ branches from forks or unreviewed pull requests.
 | `aws eks get-token` | Needs no IAM permission of its own (see the verified list) |
 | Security groups | Runner: no inbound, egress TCP 443. Cluster security group: ingress TCP 443 from the runner security group |
 | EKS access | Access entry plus `AmazonEKSClusterAdminPolicy`, scope cluster |
-| Logging | CloudWatch log group `/ssm/session-manager/<cluster_name>`, streaming enabled |
+| Logging | CloudWatch log group `/ssm/session-manager/<cluster_name>`, streaming enabled, configured by the runner-only Session document (idle timeout 30 minutes by default) |
+| Operator policy | The `operator_policy_example_json` module output (`stage2_runner_operator_policy_example` in stage 1) renders an example IAM policy for the operator: `ssm:StartSession` on the runner instance and on the runner document only, own sessions only for resume and terminate, console lookups of the document. It is an example: Terraform does not create or attach it |
 
-The preferences document `SSM-SessionManagerRunShell` is the default document of the whole account
-and Region: its logging and idle timeout (30 minutes by default) apply to every Session Manager
-session in the account, not only to this runner. It did not exist when this ADR was written, so
-Terraform can create it; if another one is created later, `terraform apply` of stage 1 fails on a
-name conflict and the document must be imported or merged.
+The runner Session document has no account-wide effect. Its limit is enforcement: IAM can restrict
+an operator to the runner document (grant `ssm:StartSession` only on the runner instance and on the
+document ARN, and not on `SSM-SessionManagerRunShell` or any other document), but that policy lives
+on the operator identity, outside this repository. Anyone whose policy allows `ssm:StartSession` on
+the instance together with another document, or with the default one, gets an unlogged shell.
+Nothing on the instance side requires a specific document (not verified).
+
+Anyone who can start a session on the runner has cluster-admin on this cluster in practice: the
+shell runs with the instance role, which holds `AmazonEKSClusterAdminPolicy`, and the role also
+reads and writes the stage 2 state. Treat `ssm:StartSession` on the runner as a cluster-admin
+permission.
+
+`user_data_replace_on_change = true` replaces the instance whenever the rendered `user_data`
+changes (for example a new Terraform or kubectl version or checksum). The replacement loses every
+tmux session, the repository clone and the provider cache on the old root volume. Do not apply a
+stage 1 change that replaces the runner while a stage 2 apply or destroy is running on it.
 
 ## Operating procedure
 
 Runs from the workstation that applies stage 1 (AWS CLI, Session Manager plugin, permissions for
-`ec2:StartInstances`, `ec2:StopInstances` and `ssm:StartSession`).
+`ec2:StartInstances`, `ec2:StopInstances` and `ssm:StartSession` on the runner instance and its
+document; see the example policy output).
 
 1. Start the runner and wait until it is reachable:
    ```bash
    aws ec2 start-instances --instance-ids <instance_id>
    aws ec2 wait instance-status-ok --instance-ids <instance_id>
    ```
-   `instance_id` and the session command are outputs of stage 1 (`stage2_runner_ssm_command`).
+   The session command (with `--document-name`) is the stage 1 output `stage2_runner_ssm_command`.
 2. Open a shell and attach to tmux, so a dropped session does not kill a running apply:
    ```bash
-   aws ssm start-session --target <instance_id>
+   aws ssm start-session --target <instance_id> --document-name <session_document_name>
    tmux new -A -s stage2
    ```
    After the first boot check `ls /var/lib/stage2-runner-ready` (bootstrap log:
@@ -152,6 +171,20 @@ removes the runner, its access entry and its security group rule together with t
 - The runner reaches the internet (SSM, GitHub, HashiCorp, registries) only through the single NAT
   gateway of `modules/vpc/main.tf`; if its Availability Zone fails, the runner has no egress.
 - CI planning of stage 2 is still not possible; it would need the same network path.
+- Sessions started without `--document-name` are not logged and use the default idle timeout; see
+  the enforcement limit above.
+
+## Follow-ups
+
+- Scope `ssm:UpdateInstanceInformation` in the runner role. It supports resource-level permissions
+  (`instance` and `managed-instance` resource types in the AWS service reference), but the role
+  keeps `*` for now because that matches the minimal Session Manager policy in the AWS
+  documentation and an exact instance ARN would create a dependency cycle (instance, instance
+  profile, role, policy, instance). Try `instance/*` for the account and Region after the first
+  live run.
+- Verify the Terraform `SHA256SUMS` GPG signature in `user_data`.
+- Review the `ssmmessages:OpenDataChannel` scoping for the instance role (the AWS service reference
+  lists no resource types, while the AWS end-user policies scope it to session ARNs).
 
 ## Verified
 
@@ -189,9 +222,30 @@ removes the runner, its access entry and its security group rule together with t
   groups apply to the control plane network interfaces
   (https://docs.aws.amazon.com/eks/latest/userguide/cluster-endpoint.html,
   https://docs.aws.amazon.com/eks/latest/userguide/sec-group-reqs.html).
-- Session preferences document format and `SSM-SessionManagerRunShell`
+- Session preferences document format, and session-level documents with a name other than
+  `SSM-SessionManagerRunShell` used through `--document-name`
   (https://docs.aws.amazon.com/systems-manager/latest/userguide/getting-started-create-preferences-cli.html).
-  The document did not exist in the account on 2026-10-03.
+  `idleSessionTimeout` takes 1 to 60 and the log group and streaming inputs are part of the schema
+  (https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-schema.html).
+- With `--document-name`, IAM checks the caller's permission for that document
+  (https://docs.aws.amazon.com/systems-manager/latest/userguide/getting-started-specify-session-document.html);
+  the AWS sample policies grant `ssm:StartSession` on the instance ARN and the document ARN
+  (https://docs.aws.amazon.com/systems-manager/latest/userguide/getting-started-restrict-access-quickstart.html).
+- Document name rules: pattern `^[a-zA-Z0-9_\-.]{3,128}$`, and the prefixes `aws`, `amazon`, `amzn`,
+  `AWSEC2`, `AWSConfigRemediation` and `AWSSupport` are reserved
+  (https://docs.aws.amazon.com/systems-manager/latest/APIReference/API_CreateDocument.html). The
+  module validates `cluster_name` against the first three prefixes (case-insensitive); tested with
+  `awsprod`, `AWS-prod`, `Amazon1`, `amznx`, `Aws_x` and `_bad` (rejected) and `ok-name_1` and
+  `good-aws` (accepted).
+- The AWS service reference (`servicereference.us-east-1.amazonaws.com`) lists no resource types for
+  `ssmmessages:CreateControlChannel`, `CreateDataChannel`, `OpenControlChannel`, `OpenDataChannel`
+  and `logs:DescribeLogGroups`, and lists `instance` and `managed-instance` for
+  `ssm:UpdateInstanceInformation`. `logs:CreateLogStream` and `PutLogEvents` use the `log-stream`
+  resource type and `logs:DescribeLogStreams` the `log-group` type.
+- tfsec: the two ignores sit on the attribute lines tfsec flags (`logs:DescribeLogGroups` resources
+  and the log group ARN reference, which is a false positive because tfsec cannot resolve it).
+  `tfsec . --include-ignored` reports 45 ignored results (39 on main plus 2 x 3: the module is
+  scanned standalone and through the stack call).
 - `terraform validate`, `terraform fmt`, `tflint` (12 warnings, same count as before) and `tfsec`
   (no problems) pass; the stage 1 plan shows only creates.
 
@@ -205,7 +259,18 @@ removes the runner, its access entry and its security group rule together with t
 - Whether `eks:DescribeAddon` accepts the add-on resource ARN pattern at runtime (Access Analyzer
   found no issue; the Service Authorization Reference page could not be read). Fallback: `*`.
 - Terraform and kubectl checksums were copied over TLS from `releases.hashicorp.com` (SHA256SUMS)
-  and `dl.k8s.io` on 2026-10-03; the HashiCorp GPG signature of SHA256SUMS was not checked.
+  and `dl.k8s.io` on 2026-10-03, from the same hosts as the binaries: they detect corruption, not a
+  compromised host. The HashiCorp GPG signature of SHA256SUMS was not checked.
+- That the agent applies the runner Session document (logging to CloudWatch, idle timeout) when a
+  session is started with `--document-name`; the AWS documentation says so, but it was not tested
+  on an instance. Also not verified: the behavior of Session Manager when no default preferences
+  document exists, and that nothing on the instance can enforce a specific document.
+- The example operator policy: it was checked with IAM Access Analyzer `validate-policy` (no
+  findings) on a hand-written copy with literal ARNs, not on the rendered output (the instance and
+  document ARNs are unknown at plan time). It was not tested on a live session, nor was the
+  console path (`ssm:GetDocument`, `ssm:ListDocuments` on `*`).
+- Scoping `ssm:UpdateInstanceInformation` (see Follow-ups) and `ssmmessages:OpenDataChannel` for
+  the instance role.
 - The AWS CLI v2 is part of the AL2023 standard AMI (documentation claim, not checked on an
   instance), the `ssm-user` PATH includes `/usr/local/bin`, and the t3.small is enough for the aws,
   helm and kubernetes providers (the 2 GiB swap file is the safety margin).
