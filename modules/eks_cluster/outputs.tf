@@ -22,3 +22,8 @@ output "cluster_certificate_authority_data" {
   value       = module.eks.cluster_certificate_authority_data
   description = "Base64 certificate of the EKS cluster certificate authority (CA)"
 }
+
+output "cluster_security_group_id" {
+  value       = module.eks.cluster_security_group_id
+  description = "ID of the security group that controls access to the private API endpoint (attached to the control plane network interfaces)"
+}
