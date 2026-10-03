@@ -34,6 +34,11 @@ output "karpenter_node_role_name" {
 }
 
 output "stage2_runner_ssm_command" {
-  description = "Command to open a shell on the stage 2 runner (start the instance first; see ADR 0002)"
+  description = "Command to open a logged shell on the stage 2 runner (start the instance first; see ADR 0002)"
   value       = module.stage2_runner.ssm_session_command
+}
+
+output "stage2_runner_operator_policy_example" {
+  description = "EXAMPLE ONLY, not applied: IAM policy for the operator identity that limits Session Manager to the stage 2 runner and its session document"
+  value       = module.stage2_runner.operator_policy_example_json
 }

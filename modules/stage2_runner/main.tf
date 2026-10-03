@@ -2,6 +2,10 @@ locals {
   name         = "${var.cluster_name}-stage2-runner"
   state_prefix = dirname(var.cluster_state_key)
 
+  # Document names allow 3 to 128 characters of [a-zA-Z0-9_.-] and cannot start with aws, amazon or
+  # amzn (CreateDocument API reference); var.cluster_name is validated for the reserved prefixes
+  session_document_name = "${local.name}-session"
+
   # Access policy ARNs are AWS-defined constants (partition aws, no account or Region)
   cluster_admin_policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
 }
@@ -194,16 +198,17 @@ resource "aws_cloudwatch_log_group" "sessions" {
   tags = var.tags
 }
 
-# This is the account and Region wide default Session Manager preferences document: its logging
-# and idle timeout settings apply to every session in the account, not only to this runner.
+# Session document used only by this runner. Sessions get its logging and idle timeout only when
+# started with --document-name (see the ssm_session_command output). The account default document
+# SSM-SessionManagerRunShell is not managed here.
 resource "aws_ssm_document" "session_preferences" {
-  name            = "SSM-SessionManagerRunShell"
+  name            = local.session_document_name
   document_type   = "Session"
   document_format = "JSON"
 
   content = jsonencode({
     schemaVersion = "1.0"
-    description   = "Session Manager preferences: stream session logs to CloudWatch Logs"
+    description   = "Session Manager preferences of the stage 2 runner: stream session logs to CloudWatch Logs"
     sessionType   = "Standard_Stream"
     inputs = {
       s3BucketName                = ""
@@ -225,6 +230,61 @@ resource "aws_ssm_document" "session_preferences" {
   })
 
   tags = var.tags
+}
+
+################################################################################
+# Example operator policy (rendered only, never attached by this module)
+################################################################################
+
+# EXAMPLE ONLY: the operator attaches an adapted copy to their own identity outside this repository.
+# It allows sessions on the runner with the runner session document and nothing else, so a
+# start-session call without --document-name (default document) or with another document has no
+# allow. To select the instance by tag instead of by ID, use the ssm:resourceTag/Component condition
+# on the instance ARN pattern (AWS Session Manager policy examples). Untested on a live instance.
+data "aws_iam_policy_document" "operator_example" {
+  statement {
+    sid       = "StartSessionOnRunnerInstance"
+    effect    = "Allow"
+    actions   = ["ssm:StartSession"]
+    resources = [aws_instance.runner.arn]
+  }
+
+  statement {
+    sid       = "StartSessionWithRunnerDocument"
+    effect    = "Allow"
+    actions   = ["ssm:StartSession"]
+    resources = [aws_ssm_document.session_preferences.arn]
+  }
+
+  statement {
+    sid       = "OpenOwnDataChannel"
+    effect    = "Allow"
+    actions   = ["ssmmessages:OpenDataChannel"]
+    resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:session/$${aws:userid}-*"]
+  }
+
+  statement {
+    sid       = "ResumeAndTerminateOwnSessions"
+    effect    = "Allow"
+    actions   = ["ssm:ResumeSession", "ssm:TerminateSession"]
+    resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:session/$${aws:userid}-*"]
+  }
+
+  # Only needed to start the session from the Session Manager console
+  statement {
+    sid       = "ConsoleGetRunnerDocument"
+    effect    = "Allow"
+    actions   = ["ssm:GetDocument"]
+    resources = [aws_ssm_document.session_preferences.arn]
+  }
+
+  # ssm:ListDocuments has no resource types in the AWS service reference
+  statement {
+    sid       = "ConsoleListDocuments"
+    effect    = "Allow"
+    actions   = ["ssm:ListDocuments"]
+    resources = ["*"]
+  }
 }
 
 ################################################################################

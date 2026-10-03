@@ -1,6 +1,11 @@
 variable "cluster_name" {
-  description = "EKS cluster name, used for resource naming and for the EKS access entry"
+  description = "EKS cluster name, used for resource naming, the session document name and the EKS access entry"
   type        = string
+
+  validation {
+    condition     = can(regex("^[0-9A-Za-z][0-9A-Za-z_-]{0,99}$", var.cluster_name)) && !can(regex("^(?i)(aws|amazon|amzn)", var.cluster_name))
+    error_message = "cluster_name must be a valid EKS cluster name (up to 100 characters of letters, digits, hyphens and underscores) that does not start with aws, amazon or amzn, which are reserved SSM document name prefixes."
+  }
 }
 
 variable "vpc_id" {
@@ -150,7 +155,7 @@ variable "session_log_retention_in_days" {
 }
 
 variable "session_idle_timeout_minutes" {
-  description = "Idle timeout in minutes of Session Manager sessions (account and Region wide, 1 to 60)"
+  description = "Idle timeout in minutes of the Session Manager sessions started with the runner session document (1 to 60)"
   type        = number
   default     = 30
 
