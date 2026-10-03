@@ -29,6 +29,22 @@ module "eks_addons" {
   depends_on = [module.eks_cluster]
 }
 
+module "stage2_runner" {
+  source                    = "../../modules/stage2_runner"
+  cluster_name              = module.eks_cluster.cluster_name
+  vpc_id                    = module.vpc.vpc_id
+  subnet_id                 = module.vpc.private_subnet_ids[0]
+  cluster_security_group_id = module.eks_cluster.cluster_security_group_id
+  state_bucket_name         = var.state_bucket_name
+
+  tags = {
+    Environment = var.environment
+    Component   = "stage2-runner"
+  }
+
+  depends_on = [module.eks_cluster]
+}
+
 locals {
   cluster_name = "eks-gitops-${var.environment}"
 }

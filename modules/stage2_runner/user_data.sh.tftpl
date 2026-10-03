@@ -1,0 +1,35 @@
+#!/bin/bash
+# First-boot bootstrap of the stage 2 runner (AL2023). Runs once, as root.
+# Downloads use HTTPS only because the private subnet NACLs allow TCP 443 egress only.
+set -euo pipefail
+exec > >(tee -a /var/log/stage2-runner-bootstrap.log) 2>&1
+
+dnf install -y git tmux unzip
+# The AL2023 standard AMI ships the AWS CLI v2; install it only when it is missing
+command -v aws > /dev/null || dnf install -y awscli-2
+
+# Swap file: the aws and helm providers can exceed the instance RAM
+if ! swapon --show=NAME --noheadings | grep -q '^/swapfile$'; then
+  fallocate -l ${swap_size_gb}G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+workdir="$(mktemp -d)"
+cd "$workdir"
+
+# Pinned Terraform, verified against the expected SHA256 before it is installed
+curl -fsSLO "https://releases.hashicorp.com/terraform/${terraform_version}/terraform_${terraform_version}_linux_amd64.zip"
+echo "${terraform_sha256}  terraform_${terraform_version}_linux_amd64.zip" | sha256sum -c -
+unzip -o "terraform_${terraform_version}_linux_amd64.zip" terraform -d /usr/local/bin
+
+# Pinned kubectl, verified against the expected SHA256 before it is installed
+curl -fsSLo kubectl "https://dl.k8s.io/release/v${kubectl_version}/bin/linux/amd64/kubectl"
+echo "${kubectl_sha256}  kubectl" | sha256sum -c -
+install -m 0755 kubectl /usr/local/bin/kubectl
+
+cd /
+rm -rf "$workdir"
+touch /var/lib/stage2-runner-ready

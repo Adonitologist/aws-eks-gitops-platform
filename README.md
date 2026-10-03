@@ -31,6 +31,7 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 │   ├── vpc/                       # Network topology and discovery tags
 │   ├── eks_cluster/               # Control plane, OIDC, and System Node Group
 │   ├── eks_addons/                # IAM roles, SQS, Pod Identity (stage 1)
+│   ├── stage2_runner/             # SSM-only EC2 that runs stage 2 against the private endpoint (stage 1)
 │   ├── eks_addons_helm/           # AWS Load Balancer Controller and Karpenter via Helm (stage 2)
 │   └── gitops_argocd/             # ArgoCD Operator bootstrap via Helm (stage 2)
 ├── stacks/
@@ -42,7 +43,7 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 └── docs/adr/                      # Architecture decision records
 ```
 
-Design decisions: [ADR 0001: private EKS endpoint and two-stage split](docs/adr/0001-private-eks-endpoint.md).
+Design decisions: [ADR 0001: private EKS endpoint and two-stage split](docs/adr/0001-private-eks-endpoint.md), [ADR 0002: stage 2 access path](docs/adr/0002-stage2-access-path.md).
 ## Deployment Instructions
 **Prerequisites**
 
@@ -52,7 +53,7 @@ Design decisions: [ADR 0001: private EKS endpoint and two-stage split](docs/adr/
 
 **Apply order: infra, then cluster**
 
-The stacks have separate states and must be applied in this order. Stage 2 reads stage-1 outputs and requires the Pod Identity agent addon created by stage 1 (a cross-stack `depends_on` is not possible, so `stacks/cluster` fails its plan if the addon is missing). Stage 2 must run from a host with a network path to the private EKS endpoint; see [ADR 0001](docs/adr/0001-private-eks-endpoint.md) for the known constraint and the known issues to fix before the first apply.
+The stacks have separate states and must be applied in this order. Stage 2 reads stage-1 outputs and requires the Pod Identity agent addon created by stage 1 (a cross-stack `depends_on` is not possible, so `stacks/cluster` fails its plan if the addon is missing). Stage 2 must run on the stage 2 runner, an SSM-only EC2 instance that stage 1 creates inside the VPC (start it, open a Session Manager shell, run Terraform in tmux, stop it; procedure in [ADR 0002](docs/adr/0002-stage2-access-path.md)). See [ADR 0001](docs/adr/0001-private-eks-endpoint.md) for the known issues to fix before the first apply.
 
 1. Stage 1, AWS resources (VPC, EKS, IAM, SQS, Pod Identity):
    ```bash
@@ -61,7 +62,7 @@ The stacks have separate states and must be applied in this order. Stage 2 reads
    terraform plan -var="environment=production"
    terraform apply -var="environment=production"
    ```
-2. Stage 2, Helm releases and Argo CD:
+2. Stage 2, Helm releases and Argo CD, run on the stage 2 runner after cloning this repository there (see ADR 0002):
    ```bash
    cd stacks/cluster
    terraform init
@@ -76,7 +77,7 @@ The stacks have separate states and must be applied in this order. Stage 2 reads
 
 ### Post-Deploy Checklist
 
-The API endpoint is private-only, so run these from a host inside the VPC (or over VPN).
+The API endpoint is private-only, so run these on the stage 2 runner (see ADR 0002).
 
 1. Nodes are Ready: `kubectl get nodes` shows all system nodes in `Ready`.
 2. Image pulls work (private subnets reach the internet only on TCP 443 through the NAT): `kubectl get pods -A` shows no `ImagePullBackOff` or `ErrImagePull`.
@@ -87,7 +88,7 @@ The API endpoint is private-only, so run these from a host inside the VPC (or ov
 
 Destroying a GitOps cluster strictly requires draining dynamic resources prior to invoking Terraform. Failure to do so will result in orphaned EC2 Spot instances and deadlocked VPC dependencies.
 
-Teardown is the reverse of the apply order: cluster stack first, then infra.
+Teardown is the reverse of the apply order: cluster stack (stage 2) first, then infra. Steps 1 to 5 need the private endpoint, so start the stage 2 runner and run them there (see ADR 0002). Step 6 runs from your workstation: it also destroys the runner.
 
 1. **Destroy GitOps Workloads & Ingress:**
    Remove the root application to force Argo CD to gracefully delete Ingress resources, signaling the AWS Load Balancer Controller to dismantle the physical ALBs.

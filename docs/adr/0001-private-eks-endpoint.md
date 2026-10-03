@@ -42,9 +42,9 @@
 ## Consequences
 
 - Stage 1 needs only AWS API access and is the only stack planned in CI.
-- Stage 2 is applied from a host with a network path to the private endpoint. Known constraint:
-  applying stage 2 from a laptop is not possible until that access path exists; the access path is
-  planned in PR B and is not decided here.
+- Stage 2 is applied from a host with a network path to the private endpoint. The access path is
+  decided in [ADR 0002](0002-stage2-access-path.md): an operator-run, SSM-only EC2 runner created by
+  stage 1. Applying stage 2 from a laptop is not possible.
 - The state was empty when the split was made, so no `terraform state mv` or `removed` blocks were
   needed.
 - The `aws_eks_addon` data source checks that the addon exists. It does not check readiness: the
