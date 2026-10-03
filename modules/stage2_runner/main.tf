@@ -83,12 +83,15 @@ resource "aws_iam_instance_profile" "runner" {
   tags = var.tags
 }
 
-# Justification for the wildcard resources (all other statements are scoped):
-# - ssm:UpdateInstanceInformation and ssmmessages:* do not support resource-level permissions
-#   (minimal Session Manager policy in the AWS Systems Manager User Guide).
-# - logs:DescribeLogGroups is required by the SSM agent for session logging and is listed with "*"
-#   in the same guide.
-#tfsec:ignore:aws-iam-no-policy-wildcards
+# Wildcard resources (all other statements are scoped):
+# - ssm:UpdateInstanceInformation supports resource-level permissions (instance and managed-instance
+#   resource types in the AWS service reference). "*" is kept because it matches the minimal Session
+#   Manager policy in the AWS Systems Manager User Guide and an exact instance ARN would create a
+#   dependency cycle (instance, instance profile, role, policy, instance). Scoping it with
+#   instance/* is untested and is a follow-up after the first live run.
+# - ssmmessages:* and logs:DescribeLogGroups have no resource types in the AWS service reference.
+# The tfsec ignores below sit on the two attribute lines that tfsec flags, not on the whole
+# document, so a wildcard added to any other statement is still reported.
 data "aws_iam_policy_document" "runner" {
   statement {
     sid    = "SessionManager"
@@ -104,9 +107,12 @@ data "aws_iam_policy_document" "runner" {
   }
 
   statement {
-    sid       = "SessionLogsDescribeGroups"
-    effect    = "Allow"
-    actions   = ["logs:DescribeLogGroups"]
+    sid     = "SessionLogsDescribeGroups"
+    effect  = "Allow"
+    actions = ["logs:DescribeLogGroups"]
+    # Justification: logs:DescribeLogGroups has no resource types (AWS service reference) and the
+    # SSM agent calls it for session logging.
+    #tfsec:ignore:aws-iam-no-policy-wildcards
     resources = ["*"]
   }
 
@@ -118,6 +124,10 @@ data "aws_iam_policy_document" "runner" {
       "logs:DescribeLogStreams",
       "logs:PutLogEvents",
     ]
+    # Justification: false positive. The resource is the log group ARN reference below; tfsec cannot
+    # resolve it at scan time and reports it as a wildcarded placeholder. The rendered policy is
+    # scoped to this log group.
+    #tfsec:ignore:aws-iam-no-policy-wildcards
     resources = ["${aws_cloudwatch_log_group.sessions.arn}:*"]
   }
 

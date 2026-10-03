@@ -27,6 +27,7 @@ variable "azs" {
   }
 }
 
+# Must match the bucket in the backend blocks of stacks/infra and stacks/cluster.
 variable "state_bucket_name" {
   description = "Name of the S3 bucket that holds the Terraform state of both stacks (must match the backend blocks)"
   type        = string
