@@ -26,3 +26,9 @@ variable "azs" {
     error_message = "At least 2 availability zones are required."
   }
 }
+
+variable "state_bucket_name" {
+  description = "Name of the S3 bucket that holds the Terraform state of both stacks (must match the backend blocks)"
+  type        = string
+  default     = "eks-gitops-tfstate-154932391641"
+}
