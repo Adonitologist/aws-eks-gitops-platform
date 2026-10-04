@@ -69,11 +69,22 @@ The stacks have separate states and must be applied in this order. Stage 2 reads
    terraform plan
    terraform apply
    ```
-3. Verify GitOps synchronization. Argo CD takes over and syncs `kubernetes/workloads`:
+3. Create the root application (see Creating root-application below), then verify GitOps synchronization. Argo CD syncs `kubernetes/workloads`:
    ```bash
    aws eks update-kubeconfig --region us-east-1 --name eks-gitops-production
    kubectl get nodepools
    ```
+
+### Creating root-application
+
+Proposed procedure, NOT VERIFIED against the live run. No Terraform resource creates `root-application`, so it is applied by hand after the stage 2 apply, with `kubectl` against the private endpoint (stage 2 runs on the runner; `README.md:65` says to clone this repository there):
+
+```bash
+kubectl apply -f kubernetes/argocd-apps/root-app.yaml
+kubectl get application root-application -n argocd
+```
+
+The manifest syncs `kubernetes/workloads` (the Karpenter EC2NodeClass and NodePool) from the GitHub repository with `targetRevision: HEAD` (`kubernetes/argocd-apps/root-app.yaml:13`), with automated sync, prune and self-heal.
 
 ### Post-Deploy Checklist
 
@@ -90,9 +101,11 @@ Destroying a GitOps cluster strictly requires draining dynamic resources prior t
 
 Teardown is the reverse of the apply order: cluster stack (stage 2) first, then infra. Steps 1 to 5 need the private endpoint, so start the stage 2 runner and run them there (see ADR 0002). Step 6 runs from your workstation: it also destroys the runner.
 
-1. **Destroy GitOps Workloads & Ingress:**
-   Remove the root application to force Argo CD to gracefully delete Ingress resources, signaling the AWS Load Balancer Controller to dismantle the physical ALBs.
+1. **Delete the Argo CD ingress and the root application:**
+   The Argo CD ALB ingress is created by the Helm release (stage 2), not by Argo CD, so deleting the root application does not remove it. Confirm the ingress name, then delete it so the AWS Load Balancer Controller dismantles its ALB. Then delete the root application, which removes the NodePool and EC2NodeClass it syncs from `kubernetes/workloads`.
    ```bash
+   kubectl get ingress -n argocd
+   kubectl delete ingress argocd-server -n argocd
    kubectl delete application root-application -n argocd
    ```
 
@@ -101,6 +114,7 @@ Teardown is the reverse of the apply order: cluster stack (stage 2) first, then 
    ```bash
    aws elbv2 describe-load-balancers --query "LoadBalancers[].LoadBalancerName"
    ```
+   The Argo CD ALB can take time to disappear; do not continue until the command returns an empty list.
 
 3. **Drain Karpenter Capacity:**
    Force Karpenter to cordon and terminate all dynamically provisioned EC2 compute nodes to prevent ghost charges.
