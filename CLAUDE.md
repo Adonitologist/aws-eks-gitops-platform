@@ -34,12 +34,13 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 - The stage 2 runner is stopped when idle; start it before use (`aws ec2 start-instances`). Teardown also runs on it (stage 2 destroyed first, then stage 1 from the workstation). Because of `depends_on` on the module call, its data sources are read at apply time, so a stage 1 plan shows its AMI and policy as known after apply. Recreate it with `-replace=module.stage2_runner.aws_instance.runner` to refresh the AMI.
 - tfsec findings from upstream modules are silenced with `#tfsec:ignore:<ID>` lines directly above the `module` line (see `modules/vpc/main.tf`, `modules/eks_cluster/main.tf`); justifications go above them.
 - `modules/eks_cluster` takes `cluster_version` (default "1.35", one minor behind the latest, standard support until 2027-03-27; the Argo CD and LB controller chart bumps were the last blocker, so apply only after that PR is merged; remaining are the verify-after-first-apply items in the ADR) and `system_node_*` from variables. The README Terraform badge is stale (v1.5+).
-- Backend bucket is hardcoded in `stacks/infra/backend.tf` and `stacks/cluster/backend.tf` (S3 only, `use_lockfile = true`, no DynamoDB; needs Terraform >= 1.10 and CI pins 1.15.6 at `ci.yml` lines 24 and 62). The CI role needs write/delete on the `.tflock` object next to the state key. Local plans use a read-only profile, so they must pass `-lock=false`. Changing the backend may need `terraform init -reconfigure`.
+- Backend bucket is hardcoded in `stacks/infra/backend.tf` and `stacks/cluster/backend.tf` (S3 only, `use_lockfile = true`, no DynamoDB; needs Terraform >= 1.10 and CI pins 1.15.6 at `ci.yml` lines 24 and 62). The CI role needs write/delete on the `.tflock` object next to the state key. Local AWS profiles: `default` (IAM user terraform-developer) is used by the operator, whose plans use the normal state lock; `readonly` (assumed role claude-readonly, used by the cc alias and by Claude Code) is not expected to write the `.tflock` object, so plans run with it pass `-lock=false`. Changing the backend may need `terraform init -reconfigure`.
 - English only: comments, variable and output descriptions, error messages, YAML comments and docs are all in English.
 - `contexto_*.txt` / `estado_repositorio.txt` in the root are scratch dumps (git-ignored), not part of the project.
 
 ## Output limits
-- Always run plan as: terraform plan -lock=false -no-color -compact-warnings 2>&1 | tail -n 40
+- Plans run by Claude Code (profile `readonly`) always: terraform plan -lock=false -no-color -compact-warnings 2>&1 | tail -n 40
+- Operator plans (profile `default`) use the normal lock: terraform plan -no-color -compact-warnings 2>&1 | tail -n 40
 - Never read full plan output or full debug logs; use tail/grep.
 
 ## AWS/Terraform quality standards (mandatory)

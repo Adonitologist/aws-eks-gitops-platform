@@ -301,3 +301,11 @@ Open items:
 - Whether the runner needs `elasticloadbalancing:Describe*`.
 
 Teardown order: see the README "Safe Teardown Protocol". Delta against the "Teardown order" section above (`:151`): the operator reported that the ALB ingress, the NodePool, the EC2NodeClass and the Argo CD Application must be deleted before Argo CD is uninstalled, because the Application finalizer blocks the namespace otherwise. That section lists the root application, ALBs, NodePools, EC2NodeClasses and finalizers, but does not state this ordering constraint.
+
+## Addendum 2026-10-04: plan profiles
+
+On the workstation, the operator profile `default` (IAM user terraform-developer) planned `stacks/infra` with the normal state lock (exit 0, lock released). `-lock=false` stays reserved for plans run with the read-only profile `readonly`. The sentence at `:136-138` ("the read-only workstation profile") is therefore incomplete.
+
+Provenance: reported by the operator from a run on 2026-10-04; raw output not retained in the repo.
+
+Not verified: that claude-readonly cannot write the `.tflock` object.
