@@ -84,3 +84,28 @@
 | Add-on ordering | verified | `aws_eks_addon.managed` in `modules/eks_addons` has no direct dependency on the managed node group: it references only `local.managed_addons` and `var.cluster_name` (checked in the `terraform graph -type=plan` output). Ordering after the node group comes only from `depends_on = [module.eks_cluster]` at `stacks/infra/main.tf:29` (module call at lines 23-30); keep that `depends_on` if the module call is moved. The four add-ons are created in parallel. To verify after the first apply: that the node group is ACTIVE with Ready nodes before CoreDNS is created. |
 | CNI policy | verified | `iam_role_attach_cni_policy` defaults to `true` in terraform-aws-modules/eks 20.37.2 (`eks-managed-node-group/variables.tf:537-541`, passed through at `node_groups.tf:397`, attachment logic at `main.tf:499-501`, under `.terraform/modules/eks_cluster.eks`). The saved plan of `stacks/infra` creates `aws_iam_role_policy_attachment.this["AmazonEKS_CNI_Policy"]` for the `system_components` node group role and the `AmazonEKS_CNI_Policy` attachment for the Karpenter node role. |
 | `aws_eks_addon` data source checks existence, not readiness | verified | See Consequences. |
+
+## Addendum 2026-10-04: live run results
+
+Reported by the operator from the live run of 2026-10-04; raw output not retained in the repo; not independently verified.
+
+The original text above is unchanged.
+
+Measured on the live run:
+
+- 29 allocatable pods per node. Karpenter launched no node, so only system node group nodes were measured.
+- CoreDNS ran with 2 replicas; the managed add-ons were adopted and ACTIVE.
+- The stage 2 runner registered in SSM with the minimal policy and `user_data` worked.
+- The Karpenter NodePool and EC2NodeClass reached READY via Argo CD.
+- Argo CD, AWS Load Balancer Controller and Karpenter pods were Running and an ALB was created.
+
+Open items (not verified by the live run):
+
+- `ec2:CreateFleet` under the Free Tier policy (Karpenter never launched a node).
+- Real memory use of the system pods.
+- Managed vpc-cni `enableNetworkPolicy` default.
+- AWS Load Balancer Controller 3.5.0 on Kubernetes 1.35 (no official statement; not verified).
+- Argo CD 2.11 to 2.14 upgrade guides (only skimmed).
+- Terraform GPG signature check on the runner.
+- CloudWatch and NAT costs.
+- Whether the runner needs `elasticloadbalancing:Describe*`.
