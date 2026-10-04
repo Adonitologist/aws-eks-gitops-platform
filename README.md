@@ -115,6 +115,8 @@ Teardown is the reverse of the apply order: cluster stack (stage 2) first, then 
    kubectl patch application root-application -n argocd --type=merge -p '{"metadata":{"finalizers":[]}}'
    ```
 
+> Note: do not uninstall Argo CD before the ALB ingress, the NodePools, the EC2NodeClasses and the Argo CD Application are deleted. The Application finalizer blocks the namespace otherwise.
+
 5. **Destroy the cluster stack (stage 2):**
    ```bash
    cd stacks/cluster
@@ -126,3 +128,5 @@ Teardown is the reverse of the apply order: cluster stack (stage 2) first, then 
    cd stacks/infra
    terraform destroy
    ```
+
+> PowerShell note: quote the flag, for example `"-out=destroy.tfplan"`. A stale plan must be re-planned and applied immediately.
