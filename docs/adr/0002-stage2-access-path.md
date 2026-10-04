@@ -79,7 +79,7 @@ branches from forks or unreviewed pull requests.
 |---|---|
 | Instance | AL2023 from the public SSM parameter `/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64`, `ignore_changes = [ami]`, IMDSv2 required with hop limit 1, encrypted gp3 root volume (30 GiB), 2 GiB swap file, `user_data_replace_on_change = true` |
 | Packages | git, tmux, unzip, AWS CLI v2 (present in the AL2023 standard AMI; installed only if missing), Terraform and kubectl with SHA256 check |
-| IAM role | Session Manager minimal permissions, session log write to its log group, S3 access scoped to `eks-gitops-platform/*` (list with prefix condition, read `terraform.tfstate`, read/write `cluster.tfstate`, read/write/delete `cluster.tfstate.tflock`), `eks:DescribeAddon` on the cluster add-on ARNs |
+| IAM role | Session Manager minimal permissions, session log write to its log group, S3 access scoped to `eks-gitops-platform/*` (list with prefix condition, read `terraform.tfstate`, read/write `cluster.tfstate`, read/write/delete `cluster.tfstate.tflock`), `eks:DescribeAddon` on the cluster add-on ARNs, `eks:DescribeCluster` on the cluster ARN (needed by `aws eks update-kubeconfig`) |
 | `aws eks get-token` | Needs no IAM permission of its own (see the verified list) |
 | Security groups | Runner: no inbound, egress TCP 443. Cluster security group: ingress TCP 443 from the runner security group |
 | EKS access | Access entry plus `AmazonEKSClusterAdminPolicy`, scope cluster |
@@ -212,6 +212,12 @@ removes the runner, its access entry and its security group rule together with t
 - `eks:DescribeAddon` backs the DescribeAddon API
   (https://docs.aws.amazon.com/eks/latest/APIReference/API_DescribeAddon.html); IAM Access Analyzer
   `validate-policy` returned no findings for the rendered runner policy.
+- `eks:DescribeCluster` backs the DescribeCluster API
+  (https://docs.aws.amazon.com/eks/latest/APIReference/API_DescribeCluster.html) and uses the `cluster`
+  resource type, ARN `arn:aws:eks:<region>:<account>:cluster/<name>` (AWS service reference JSON for
+  EKS). Gap found in the first live run: `aws eks update-kubeconfig` on the runner failed with
+  AccessDeniedException for `eks:DescribeCluster`, which the first version of the role lacked. It is
+  the only other EKS action used in the repo (stage 2 itself needs only `eks:DescribeAddon`).
 - `aws_eks_access_entry`, `aws_eks_access_policy_association` and
   `aws_vpc_security_group_ingress_rule` exist in aws provider 5.100.0 (provider schema of
   `stacks/infra`).
