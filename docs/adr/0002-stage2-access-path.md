@@ -286,3 +286,18 @@ removes the runner, its access entry and its security group rule together with t
   `ec2:StopInstances`) and the Session Manager plugin on the workstation.
 - Behavior of the Helm releases (default provider timeout 300 s, no `atomic`) during a first apply
   on a fresh cluster; unrelated to the access path but relevant to the first run.
+
+## Addendum 2026-10-04: live run results
+
+Reported by the operator from the live run of 2026-10-04; raw output not retained in the repo; not independently verified.
+
+The original text above is unchanged.
+
+Status update: the "Not verified" bullets at `docs/adr/0002-stage2-access-path.md:260` (`user_data` has not run on a real instance) and `:263` (whether the minimal Session Manager policy is enough for the SSM agent to register) are affected by the live run. The operator reported that the runner registered in SSM with the minimal policy and that `user_data` worked. Reported by the operator from the live run of 2026-10-04; raw output not retained in the repo; not independently verified.
+
+Open items:
+
+- The HashiCorp GPG signature of SHA256SUMS in `user_data` was not checked.
+- Whether the runner needs `elasticloadbalancing:Describe*`.
+
+Teardown order: see the README "Safe Teardown Protocol". Delta against the "Teardown order" section above (`:151`): the operator reported that the ALB ingress, the NodePool, the EC2NodeClass and the Argo CD Application must be deleted before Argo CD is uninstalled, because the Application finalizer blocks the namespace otherwise. That section lists the root application, ALBs, NodePools, EC2NodeClasses and finalizers, but does not state this ordering constraint.
