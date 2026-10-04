@@ -176,6 +176,14 @@ data "aws_iam_policy_document" "runner" {
     actions   = ["eks:DescribeAddon"]
     resources = ["arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:addon/${var.cluster_name}/*/*"]
   }
+
+  # Needed by aws eks update-kubeconfig
+  statement {
+    sid       = "EksDescribeCluster"
+    effect    = "Allow"
+    actions   = ["eks:DescribeCluster"]
+    resources = ["arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"]
+  }
 }
 
 resource "aws_iam_role_policy" "runner" {
