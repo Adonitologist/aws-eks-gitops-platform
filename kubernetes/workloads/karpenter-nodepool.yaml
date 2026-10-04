@@ -35,20 +35,23 @@ spec:
         - key: kubernetes.io/arch
           operator: In
           values: ["amd64"]
-        - key: "karpenter.k8s.aws/instance-category"
+        # Only Free Tier plan eligible x86_64 types launch (see ADR 0001, row "AWS Free Tier plan")
+        - key: node.kubernetes.io/instance-type
           operator: In
-          values: ["t", "m", "c"]
+          values: ["m7i-flex.large", "c7i-flex.large"]
+        # On-demand only: the published Free Tier policy denies Spot and ec2:CreateFleet.
+        # NOT VERIFIED that it applies to this account; if CreateFleet is denied, Karpenter cannot launch nodes.
         - key: "karpenter.sh/capacity-type"
           operator: In
-          values: ["spot", "on-demand"]
+          values: ["on-demand"]
       nodeClassRef:
         group: karpenter.k8s.aws
         kind: EC2NodeClass
         name: default
       expireAfter: 720h # 30 days
   limits:
-    cpu: "100"
-    memory: 100Gi
+    cpu: "8"
+    memory: 32Gi
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 1m

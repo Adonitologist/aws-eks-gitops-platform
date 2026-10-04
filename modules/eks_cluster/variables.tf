@@ -25,9 +25,9 @@ variable "cluster_version" {
 }
 
 variable "system_node_instance_types" {
-  description = "EC2 instance types for the System Node Group"
+  description = "EC2 instance types for the System Node Group. x86_64 only, because ami_type is AL2023_x86_64_STANDARD. On an AWS Free Tier plan only Free Tier eligible types launch (aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true)"
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["m7i-flex.large"]
 
   validation {
     condition     = length(var.system_node_instance_types) > 0
