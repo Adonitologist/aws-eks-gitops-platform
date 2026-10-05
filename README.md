@@ -1,7 +1,7 @@
 # Enterprise AWS EKS GitOps Platform
 
 ![Terraform CI](https://github.com/Adonitologist/aws-eks-gitops-platform/actions/workflows/ci.yml/badge.svg)
-![Terraform](https://img.shields.io/badge/IaC-Terraform_v1.5+-844FBA?logo=terraform)
+![Terraform](https://img.shields.io/badge/IaC-Terraform_v1.15.6-844FBA?logo=terraform)
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.35-326CE5?logo=kubernetes)
 ![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-EF7B4D?logo=argo)
 ![AWS](https://img.shields.io/badge/Cloud-AWS_EKS-232F3E?logo=amazon-aws)
@@ -13,7 +13,7 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 1. **Infrastructure as Code (Terraform):** Provisions a dedicated VPC with multi-AZ topology, private subnets with auto-discovery tags, and a managed EKS control plane.
 2. **Zero-Trust Identity (AWS IAM & IRSA):** Implements OpenID Connect (OIDC) to map native AWS IAM roles directly to Kubernetes Service Accounts, adhering to the principle of least privilege.
 3. **Dynamic Compute (Karpenter):** Replaces traditional Auto Scaling Groups. Karpenter observes unschedulable pods and natively provisions right-sized, cost-optimized EC2 instances (Spot and On-Demand) directly from the AWS API in milliseconds.
-4. **Continuous Deployment (ArgoCD):** Installed via Helm during the infrastructure bootstrap, ArgoCD immediately syncs with this Git repository (`kubernetes/` directory) to continuously reconcile the cluster state against the defined manifests.
+4. **Continuous Deployment (ArgoCD):** Installed via Helm during the infrastructure bootstrap, ArgoCD syncs `kubernetes/workloads` from this Git repository once the root application is created (see "Creating root-application" below), continuously reconciling the cluster state against the defined manifests.
 
 ## Core Technical Highlights
 
@@ -26,21 +26,21 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 
 ```text
 .
-├── .github/workflows/ci.yml       # Automated security and validation pipeline
-├── modules/
-│   ├── vpc/                       # Network topology and discovery tags
-│   ├── eks_cluster/               # Control plane, OIDC, and System Node Group
-│   ├── eks_addons/                # IAM roles, SQS, Pod Identity (stage 1)
-│   ├── stage2_runner/             # SSM-only EC2 that runs stage 2 against the private endpoint (stage 1)
-│   ├── eks_addons_helm/           # AWS Load Balancer Controller and Karpenter via Helm (stage 2)
-│   └── gitops_argocd/             # ArgoCD Operator bootstrap via Helm (stage 2)
-├── stacks/
-│   ├── infra/                     # Stage 1: vpc, eks_cluster, eks_addons (state: terraform.tfstate)
-│   └── cluster/                   # Stage 2: Helm releases and ArgoCD (state: cluster.tfstate)
-├── kubernetes/
-│   ├── argocd-apps/               # Root application controller
-│   └── workloads/                 # Karpenter NodePools and dynamic deployments
-└── docs/adr/                      # Architecture decision records
+|-- .github/workflows/ci.yml       # Automated security and validation pipeline
+|-- modules/
+|   |-- vpc/                       # Network topology and discovery tags
+|   |-- eks_cluster/               # Control plane, OIDC, and System Node Group
+|   |-- eks_addons/                # IAM roles, SQS, Pod Identity (stage 1)
+|   |-- stage2_runner/             # SSM-only EC2 that runs stage 2 against the private endpoint (stage 1)
+|   |-- eks_addons_helm/           # AWS Load Balancer Controller and Karpenter via Helm (stage 2)
+|   `-- gitops_argocd/             # ArgoCD Operator bootstrap via Helm (stage 2)
+|-- stacks/
+|   |-- infra/                     # Stage 1: vpc, eks_cluster, eks_addons (state: terraform.tfstate)
+|   `-- cluster/                   # Stage 2: Helm releases and ArgoCD (state: cluster.tfstate)
+|-- kubernetes/
+|   |-- argocd-apps/               # Root application controller
+|   `-- workloads/                 # Karpenter NodePools and dynamic deployments
+`-- docs/adr/                      # Architecture decision records
 ```
 
 Design decisions: [ADR 0001: private EKS endpoint and two-stage split](docs/adr/0001-private-eks-endpoint.md), [ADR 0002: stage 2 access path](docs/adr/0002-stage2-access-path.md).
@@ -77,7 +77,7 @@ The stacks have separate states and must be applied in this order. Stage 2 reads
 
 ### Creating root-application
 
-Proposed procedure, NOT VERIFIED against the live run. No Terraform resource creates `root-application`, so it is applied by hand after the stage 2 apply, with `kubectl` against the private endpoint (stage 2 runs on the runner; `README.md:65` says to clone this repository there):
+Proposed procedure, NOT VERIFIED against the live run. No Terraform resource creates `root-application`, so it is applied by hand after the stage 2 apply, with `kubectl` against the private endpoint (stage 2 runs on the runner; step 2 of Deployment Instructions says to clone this repository there):
 
 ```bash
 kubectl apply -f kubernetes/argocd-apps/root-app.yaml
