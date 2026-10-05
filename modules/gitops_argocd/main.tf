@@ -29,8 +29,6 @@ resource "helm_release" "argocd" {
             "alb.ingress.kubernetes.io/backend-protocol" = "HTTP"
             "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}]"
           }
-          # Base routing for the user interface
-          paths = ["/"]
         }
       }
     })
