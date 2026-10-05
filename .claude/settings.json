@@ -2,9 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(terraform validate)",
-      "Bash(terraform fmt:*)",
+      "Bash(terraform fmt -check*)",
       "Bash(tflint:*)",
       "Bash(tfsec:*)"
+    ],
+    "ask": [
+      "Bash(gh api *)"
     ],
     "deny": [
       "Bash(terraform apply:*)",
@@ -14,6 +17,38 @@
       "Bash(kubectl apply:*)",
       "Bash(kubectl delete:*)",
       "Bash(git push:*)",
+      "Bash(git *push*)",
+      "Bash(gh pr merge*)",
+      "Bash(gh pr create*)",
+      "Bash(gh * merge*)",
+      "Bash(terraform *apply*)",
+      "Bash(terraform *destroy*)",
+      "Bash(terraform *import*)",
+      "Bash(terraform *state *)",
+      "Bash(kubectl *apply*)",
+      "Bash(kubectl *delete*)",
+      "Bash(kubectl *patch*)",
+      "Bash(kubectl *replace*)",
+      "Bash(helm *install*)",
+      "Bash(helm *upgrade*)",
+      "Bash(helm *uninstall*)",
+      "Bash(helm *rollback*)",
+      "Bash(aws *delete-*)",
+      "Bash(aws *create-*)",
+      "Bash(aws *put-*)",
+      "Bash(aws *update-*)",
+      "Bash(aws *terminate-*)",
+      "Bash(aws *run-instances*)",
+      "Bash(aws *start-instances*)",
+      "Bash(aws *stop-instances*)",
+      "Bash(aws s3 rm*)",
+      "Bash(aws s3 rb*)",
+      "Bash(aws s3 cp*)",
+      "Bash(aws s3 mv*)",
+      "Bash(aws s3 sync*)",
+      "Bash(rm -rf*)",
+      "Bash(rm -fr*)",
+      "Bash(rm -r *)",
       "Read(./contexto_*.txt)",
       "Read(./estado_repositorio.txt)"
     ]
