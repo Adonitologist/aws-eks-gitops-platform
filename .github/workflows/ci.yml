@@ -40,8 +40,7 @@ jobs:
         run: tflint --init
 
       - name: Run TFLint Analysis
-        # Temporary: 12 pre-existing module warnings; fail on errors only. Remove --minimum-failure-severity in the cleanup PR once warnings reach zero.
-        run: tflint -f compact --recursive --minimum-failure-severity=error
+        run: tflint -f compact --recursive
 
       - name: Run tfsec Security Scanner
         uses: aquasecurity/tfsec-action@v1.0.3
