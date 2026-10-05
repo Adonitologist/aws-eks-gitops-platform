@@ -84,7 +84,7 @@ kubectl apply -f kubernetes/argocd-apps/root-app.yaml
 kubectl get application root-application -n argocd
 ```
 
-The manifest syncs `kubernetes/workloads` (the Karpenter EC2NodeClass and NodePool) from the GitHub repository with `targetRevision: HEAD` (`kubernetes/argocd-apps/root-app.yaml:13`), with automated sync, prune and self-heal.
+The manifest syncs `kubernetes/workloads` (the Karpenter EC2NodeClass and NodePool) from the GitHub repository with `targetRevision: main` (`kubernetes/argocd-apps/root-app.yaml:13`), with automated sync, prune and self-heal.
 
 ### Post-Deploy Checklist
 

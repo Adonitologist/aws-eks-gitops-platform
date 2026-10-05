@@ -10,7 +10,7 @@ spec:
   project: default
   source:
     repoURL: 'https://github.com/Adonitologist/aws-eks-gitops-platform.git'
-    targetRevision: HEAD
+    targetRevision: main
     path: kubernetes/workloads
     directory:
       recurse: true
