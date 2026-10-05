@@ -9,7 +9,7 @@ Pure Terraform repo (no app code, no test suite). There is no root module: the t
 ```bash
 terraform -chdir=stacks/<stack> init -backend=false   # validate job, both stacks, no AWS credentials
 terraform -chdir=stacks/<stack> validate
-tflint --init && tflint -f compact --recursive --minimum-failure-severity=error  # v0.50.0, no .tflint.hcl; covers stacks and modules
+tflint --init && tflint -f compact --recursive        # v0.50.0, config in .tflint.hcl; covers stacks and modules
 tfsec .                                               # security scan, whole repo
 # plan job, stage 1 only (stacks/infra), with a real backend:
 terraform init && terraform plan -var="environment=production" -out=tfplan
@@ -42,6 +42,19 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 - Plans run by Claude Code (profile `readonly`) always: terraform plan -lock=false -no-color -compact-warnings 2>&1 | tail -n 40
 - Operator plans (profile `default`) use the normal lock: terraform plan -no-color -compact-warnings 2>&1 | tail -n 40
 - Never read full plan output or full debug logs; use tail/grep.
+
+## Working rules
+- English and ASCII only in anything code-facing (see Gotchas): files, comments, commits, PR titles and bodies.
+- Never push, merge, apply or destroy; the operator does. No `terraform apply/destroy`, `kubectl apply/delete` or AWS write commands.
+- Label every claim VERIFIED (raw output or file:line) or NOT VERIFIED. Never say done or perfect unless output shown proves it.
+- Never print the AWS account id or role ARNs; mask them in reports and diffs.
+- Plans: profile `readonly` with `-lock=false`, see Output limits.
+- Stage by explicit path only. Never commit `stacks/infra/tfplan` or untracked files.
+- If `git diff --stat` shows a whole-file change, stop and report (`.gitattributes` enforces LF).
+- One concern per PR. When `.tf` changes, report raw output and exit codes for fmt, validate, tflint and a local plan; tfsec runs in CI.
+- Reports: full report to `<name>.md` and PR body to `<name>-body.md` in the operator's cc-reports folder, outside the repo (ASCII, masked); print only the paths and a 3-line summary.
+- Level A PRs (docs, whitespace, README): do the work and stop before push. Level B PRs (Terraform, IAM, CI, user_data, Kubernetes manifests): read-only Step 1 report, stop for approval before editing.
+- On any surprise (dirty tree, unexpected main commit, whole-file diff, failed check): stop and report.
 
 ## AWS/Terraform quality standards (mandatory)
 - This is production infrastructure: correctness and security take priority over speed and brevity.

@@ -50,9 +50,9 @@
 - The `aws_eks_addon` data source checks that the addon exists. It does not check readiness: the
   data source exposes no status attribute (verified from the AWS provider 5.x schema), so an addon
   that exists but is not yet active passes the check.
-- Temporary CI setting: `tflint` runs with `--recursive --minimum-failure-severity=error`
-  because 12 module warnings predate the split. The flag is to be removed in the cleanup PR once
-  warnings reach zero.
+- Resolved: the temporary `--minimum-failure-severity=error` flag on `tflint` was removed
+  (`.tflint.hcl` added, warnings now fail CI); it existed only because 12 module warnings
+  predated the split.
 - Apply order is infra, then cluster. Teardown is the reverse (see README).
 
 ## Alternatives considered
