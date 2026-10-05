@@ -1,8 +1,3 @@
-variable "environment" {
-  description = "Deployment environment name"
-  type        = string
-}
-
 variable "cluster_name" {
   description = "EKS cluster name, used for resource naming and subnet discovery tags"
   type        = string

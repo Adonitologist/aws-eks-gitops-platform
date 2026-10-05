@@ -23,8 +23,7 @@ module "eks_addons_helm" {
 }
 
 module "gitops_argocd" {
-  source       = "../../modules/gitops_argocd"
-  cluster_name = data.terraform_remote_state.infra.outputs.cluster_name
+  source = "../../modules/gitops_argocd"
 
   depends_on = [module.eks_addons_helm]
 }
