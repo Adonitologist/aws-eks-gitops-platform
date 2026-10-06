@@ -312,7 +312,7 @@ resource "aws_instance" "runner" {
   user_data = replace(templatefile("${path.module}/user_data.sh.tftpl", {
     swap_size_gb      = var.swap_size_gb
     terraform_version = var.terraform_version
-    terraform_sha256  = var.terraform_sha256
+    hashicorp_pgp_key = file("${path.module}/hashicorp-pgp-key.asc")
     kubectl_version   = var.kubectl_version
     kubectl_sha256    = var.kubectl_sha256
   }), "\r\n", "\n")

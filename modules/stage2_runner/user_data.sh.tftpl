@@ -4,6 +4,8 @@
 set -euo pipefail
 exec > >(tee -a /var/log/stage2-runner-bootstrap.log) 2>&1
 
+die() { echo "ERROR: $*" >&2; exit 1; }
+
 dnf install -y git tmux unzip
 # The AL2023 standard AMI ships the AWS CLI v2; install it only when it is missing
 command -v aws > /dev/null || dnf install -y awscli-2
@@ -20,10 +22,25 @@ fi
 workdir="$(mktemp -d)"
 cd "$workdir"
 
-# Pinned Terraform, verified against the expected SHA256 before it is installed
-curl -fsSLO "https://releases.hashicorp.com/terraform/${terraform_version}/terraform_${terraform_version}_linux_amd64.zip"
-echo "${terraform_sha256}  terraform_${terraform_version}_linux_amd64.zip" | sha256sum -c -
-unzip -o "terraform_${terraform_version}_linux_amd64.zip" terraform -d /usr/local/bin
+# Pinned Terraform: SHA256SUMS must carry a valid HashiCorp signature (key pinned by fingerprint,
+# embedded here, never fetched from the artifact host) and the zip must match it before install
+fpr=C874011F0AB405110D02105534365D9472D7468F
+cat > hashicorp-pgp-key.asc <<'KEY_EOF'
+${hashicorp_pgp_key}
+KEY_EOF
+export GNUPGHOME="$workdir/gnupg"
+install -d -m 0700 "$GNUPGHOME"
+gpg --batch --quiet --import hashicorp-pgp-key.asc
+[ "$(gpg --batch --with-colons --fingerprint | awk -F: '/^fpr:/{print $10; exit}')" = "$fpr" ]   || die "embedded HashiCorp key does not match the pinned fingerprint $fpr"
+tf_base="https://releases.hashicorp.com/terraform/${terraform_version}"
+tf_zip="terraform_${terraform_version}_linux_amd64.zip"
+tf_sums="terraform_${terraform_version}_SHA256SUMS"
+curl -fsSLO "$tf_base/$tf_zip"
+curl -fsSLO "$tf_base/$tf_sums"
+curl -fsSLO "$tf_base/$tf_sums.sig"
+gpg --batch --status-fd 1 --verify "$tf_sums.sig" "$tf_sums" 2> /dev/null | grep -q "^\[GNUPG:\] VALIDSIG .* $fpr\$"   || die "Terraform $tf_sums signature is not valid for fingerprint $fpr"
+grep " $tf_zip\$" "$tf_sums" | sha256sum -c - || die "$tf_zip does not match the signed SHA256SUMS"
+unzip -o "$tf_zip" terraform -d /usr/local/bin
 
 # Pinned kubectl, verified against the expected SHA256 before it is installed
 curl -fsSLo kubectl "https://dl.k8s.io/release/v${kubectl_version}/bin/linux/amd64/kubectl"
