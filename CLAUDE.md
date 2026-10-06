@@ -46,6 +46,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 ## Working rules
 - English and ASCII only in anything code-facing (see Gotchas): files, comments, commits, PR titles and bodies.
 - Never push, merge, apply or destroy; the operator does. No `terraform apply/destroy`, `kubectl apply/delete` or AWS write commands.
+- A PreToolUse hook (`.claude/hooks/block-writes.ps1`) blocks mutating commands in any spelling (full paths, `bash -c`); extend its `$rules` table when adding a tool. It is a backstop, not a boundary: the read-only IAM role is the real guard.
 - Label every claim VERIFIED (raw output or file:line) or NOT VERIFIED. Never say done or perfect unless output shown proves it.
 - Never print the AWS account id or role ARNs; mask them in reports and diffs.
 - Plans: profile `readonly` with `-lock=false`, see Output limits.
