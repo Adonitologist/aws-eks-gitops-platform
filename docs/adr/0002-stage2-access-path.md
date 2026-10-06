@@ -311,3 +311,12 @@ On the workstation, the operator profile `default` (IAM user terraform-developer
 Provenance: reported by the operator from a run on 2026-10-04; raw output not retained in the repo.
 
 Not verified: that claude-readonly cannot write the `.tflock` object.
+
+## Addendum 2026-10-06: Terraform release signature
+
+Delta against decision 6, the "Follow-ups" bullet on `SHA256SUMS` and the two "Not verified"/"Open items" bullets about the HashiCorp GPG signature: `user_data` now verifies the Terraform release signature instead of using a pinned zip checksum. The `terraform_sha256` variable is removed.
+
+- The HashiCorp release signing public key is committed as `modules/stage2_runner/hashicorp-pgp-key.asc` and embedded in `user_data`; it is never fetched from the artifact host. Its fingerprint `C874 011F 0AB4 0511 0D02 1055 3436 5D94 72D7 468F` was checked on 2026-10-06 with `gpg --show-keys` against the value on the HashiCorp security page (https://www.hashicorp.com/en/trust/security). The key expires 2030-03-01; rotate the file then.
+- `user_data` imports the key into a throwaway keyring, checks the primary fingerprint, downloads the zip, `SHA256SUMS` and `SHA256SUMS.sig`, requires a `VALIDSIG` for that primary fingerprint, then runs `sha256sum -c` on the zip line. Any failure aborts the bootstrap (`set -e` and `die`).
+- kubectl still uses `kubectl_sha256` (copied over TLS from `dl.k8s.io`; detects corruption, not a compromised host).
+- Verified locally on 2026-10-06 (workstation, not the runner): the check logic accepts the real `SHA256SUMS` and rejects a file signed by a different key. NOT VERIFIED: `user_data` on the runner (gpg availability on AL2023, TCP 443 downloads of the `.sig`) until the live run. The runner EC2 is replaced on the next apply because `user_data` changed.

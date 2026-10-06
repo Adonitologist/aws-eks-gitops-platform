@@ -110,17 +110,6 @@ variable "terraform_version" {
   }
 }
 
-variable "terraform_sha256" {
-  description = "SHA256 of terraform_<version>_linux_amd64.zip, taken from the HashiCorp SHA256SUMS file of that release"
-  type        = string
-  default     = "a7150d3b0e1b5c466ad42e8c499954a3c54645f8b56b385fa025d34f7e88faa9"
-
-  validation {
-    condition     = can(regex("^[0-9a-f]{64}$", var.terraform_sha256))
-    error_message = "terraform_sha256 must be 64 lowercase hex characters."
-  }
-}
-
 variable "kubectl_version" {
   description = "kubectl version installed on the runner (within one minor version of the cluster version)"
   type        = string
