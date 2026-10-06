@@ -1,7 +1,7 @@
 # Justification: nodes need egress to ECR, STS, public registries and AWS APIs for
 # Karpenter. Internet egress is already restricted to TCP 443 by the private subnet
 # NACLs. VPC endpoints are not adopted due to cost and public registry dependencies.
-#tfsec:ignore:aws-ec2-no-public-egress-sgr
+#trivy:ignore:AVD-AWS-0104
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 20.0"

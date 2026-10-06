@@ -254,6 +254,8 @@ removes the runner, its access entry and its security group rule together with t
   scanned standalone and through the stack call).
 - `terraform validate`, `terraform fmt`, `tflint` (12 warnings, same count as before) and `tfsec`
   (no problems) pass; the stage 1 plan shows only creates.
+- Note (2026-10-06): the tfsec results above are historical. CI now scans with Trivy (`trivy config`);
+  the two runner ignores became `#trivy:ignore:AVD-AWS-0057` on the same attribute lines.
 
 ## Not verified
 

@@ -19,7 +19,7 @@ data "aws_region" "current" {}
 # Actions required by Karpenter v1.14.1 that module v20.37.2 does not yet grant
 # (source: v1.14.1 getting-started cloudformation.yaml)
 # Wildcard resource on iam:ListInstanceProfiles is intentional: upstream Karpenter grants it unscoped
-#tfsec:ignore:aws-iam-no-policy-wildcards
+#trivy:ignore:AVD-AWS-0057
 data "aws_iam_policy_document" "karpenter_controller_extra" {
   statement {
     sid       = "AllowRegionalReadActionsExtra"
@@ -49,6 +49,9 @@ resource "aws_iam_policy" "karpenter_controller_extra" {
 }
 
 # 3. IAM Roles and Infrastructure for Karpenter (Pod Identity & Node Roles)
+# Justification: the PassRole statement without an iam:PassedToService condition comes from the
+# upstream module, which is not editable here. Revisit on module upgrade.
+#trivy:ignore:AVD-AWS-0342
 module "karpenter" {
   source  = "terraform-aws-modules/eks/aws//modules/karpenter"
   version = "~> 20.0"
