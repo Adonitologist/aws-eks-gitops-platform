@@ -10,7 +10,7 @@ Pure Terraform repo (no app code, no test suite). There is no root module: the t
 terraform -chdir=stacks/<stack> init -backend=false   # validate job, both stacks, no AWS credentials
 terraform -chdir=stacks/<stack> validate
 tflint --init && tflint -f compact --recursive        # v0.50.0, config in .tflint.hcl; covers stacks and modules
-tfsec .                                               # security scan, whole repo
+trivy config . --skip-dirs '**/.terraform'            # security scan, whole repo (trivy-action, Trivy v0.75.0)
 # plan job, stage 1 only (stacks/infra), with a real backend:
 terraform init && terraform plan -var="environment=production" -out=tfplan
 ```
@@ -32,7 +32,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 
 - `modules/vpc` is the single VPC (flow logs, dedicated NACLs, `azs` variable defaulted in `stacks/infra/variables.tf`). `eks_cluster` consumes `vpc_id`/`subnet_ids`; there is no inline VPC anymore. NACLs are tight: private subnets reach the internet only on TCP 443 (via NAT), so anything needing plain HTTP 80 egress fails.
 - The stage 2 runner is stopped when idle; start it before use (`aws ec2 start-instances`). Teardown also runs on it (stage 2 destroyed first, then stage 1 from the workstation). Because of `depends_on` on the module call, its data sources are read at apply time, so a stage 1 plan shows its AMI and policy as known after apply. Recreate it with `-replace=module.stage2_runner.aws_instance.runner` to refresh the AMI.
-- tfsec findings from upstream modules are silenced with `#tfsec:ignore:<ID>` lines directly above the `module` line (see `modules/vpc/main.tf`, `modules/eks_cluster/main.tf`); justifications go above them.
+- Trivy findings from upstream modules are silenced with `#trivy:ignore:<ID>` lines (AVD-AWS-xxxx IDs) directly above the `module` line (see `modules/vpc/main.tf`, `modules/eks_cluster/main.tf`); justifications go above them.
 - `modules/eks_cluster` takes `cluster_version` (default "1.35", one minor behind the latest, standard support until 2027-03-27; the Argo CD and LB controller chart bumps were the last blocker, so apply only after that PR is merged; remaining are the verify-after-first-apply items in the ADR) and `system_node_*` from variables. The README Terraform badge is stale (v1.5+).
 - Backend bucket is hardcoded in `stacks/infra/backend.tf` and `stacks/cluster/backend.tf` (S3 only, `use_lockfile = true`, no DynamoDB; needs Terraform >= 1.10 and CI pins 1.15.6 at `ci.yml` lines 24 and 62). The CI role needs write/delete on the `.tflock` object next to the state key. Local AWS profiles: `default` (IAM user terraform-developer) is used by the operator, whose plans use the normal state lock; `readonly` (assumed role claude-readonly, used by the cc alias and by Claude Code) is not expected to write the `.tflock` object, so plans run with it pass `-lock=false`. Changing the backend may need `terraform init -reconfigure`.
 - English only: comments, variable and output descriptions, error messages, YAML comments and docs are all in English.
@@ -52,7 +52,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 - Plans: profile `readonly` with `-lock=false`, see Output limits.
 - Stage by explicit path only. Never commit `stacks/infra/tfplan` or untracked files.
 - If `git diff --stat` shows a whole-file change, stop and report (`.gitattributes` enforces LF).
-- One concern per PR. When `.tf` changes, report raw output and exit codes for fmt, validate, tflint and a local plan; tfsec runs in CI.
+- One concern per PR. When `.tf` changes, report raw output and exit codes for fmt, validate, tflint and a local plan; Trivy runs in CI.
 - Reports: full report to `<name>.md` and PR body to `<name>-body.md` in the operator's cc-reports folder, outside the repo (ASCII, masked); print only the paths and a 3-line summary.
 - Level A PRs (docs, whitespace, README): do the work and stop before push. Level B PRs (Terraform, IAM, CI, user_data, Kubernetes manifests): read-only Step 1 report, stop for approval before editing.
 - On any surprise (dirty tree, unexpected main commit, whole-file diff, failed check): stop and report.
@@ -60,7 +60,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 ## AWS/Terraform quality standards (mandatory)
 - This is production infrastructure: correctness and security take priority over speed and brevity.
 - Scope: apply to new or modified code only. Report existing violations; do not fix them unasked.
-- Done means: terraform fmt, validate, tflint and tfsec pass with no new findings. If a tool is missing, say so; never claim it passed.
+- Done means: terraform fmt, validate, tflint and trivy config pass with no new findings. If a tool is missing, say so; never claim it passed.
 - No hardcoded values: typed variables with descriptions; validation blocks where input is constrained.
 - Bounded version constraints (~>) for providers and modules; never unconstrained.
 - IAM least privilege: no "*" in actions/resources unless justified in a comment.
@@ -70,7 +70,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 - No placeholders or TODOs; follow the existing module structure.
 - After plan, explicitly warn about any resource replacement or destruction.
 
-- tfsec:ignore lines must sit directly above the module line (one ID per line); justification comments go above them, never between.
+- trivy:ignore lines must sit directly above the module line (one ID per line); justification comments go above them, never between.
 
 - GitHub OIDC uses immutable subject: sub = repo:Adonitologist@90419501/aws-eks-gitops-platform@1383441716:<ref|pull_request>. Trust policy must use these exact values with StringEquals, no wildcards.
 - CI role github-actions-terraform-role-jeh: ReadOnlyAccess + inline terraform-state-access (state read, .tflock read/write/delete). No admin. Re-check CI plan after the first apply.

@@ -33,7 +33,7 @@
 
    Stage 2 reads cluster name, endpoint, CA, the load balancer controller role ARN and the
    Karpenter queue name from stage-1 outputs through `terraform_remote_state`.
-4. CI validates both stacks (`init -backend=false`, `validate`, `tflint`, `tfsec`) and plans
+4. CI validates both stacks (`init -backend=false`, `validate`, `tflint`, `trivy config`) and plans
    stage 1 only. CI never plans or applies stage 2 and never initializes it with a backend.
 5. The Karpenter release needs the Pod Identity agent, which stage 1 creates. A cross-stack
    `depends_on` does not exist, so stage 2 uses `data "aws_eks_addon"` to fail the plan when the

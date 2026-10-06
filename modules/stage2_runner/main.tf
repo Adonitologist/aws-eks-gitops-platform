@@ -33,6 +33,7 @@ resource "aws_security_group" "runner" {
 
 # The runner reaches SSM, S3, GitHub, HashiCorp, dl.k8s.io and public.ecr.aws, which have no fixed
 # addresses. The private subnet NACLs already restrict internet egress to TCP 443.
+#trivy:ignore:AVD-AWS-0104
 resource "aws_vpc_security_group_egress_rule" "https" {
   security_group_id = aws_security_group.runner.id
   description       = "HTTPS to AWS APIs, package and chart sources, and the private EKS endpoint"
@@ -94,7 +95,7 @@ resource "aws_iam_instance_profile" "runner" {
 #   dependency cycle (instance, instance profile, role, policy, instance). Scoping it with
 #   instance/* is untested and is a follow-up after the first live run.
 # - ssmmessages:* and logs:DescribeLogGroups have no resource types in the AWS service reference.
-# The tfsec ignores below sit on the two attribute lines that tfsec flags, not on the whole
+# The Trivy ignores below sit on the two attribute lines that are flagged, not on the whole
 # document, so a wildcard added to any other statement is still reported.
 data "aws_iam_policy_document" "runner" {
   statement {
@@ -116,7 +117,7 @@ data "aws_iam_policy_document" "runner" {
     actions = ["logs:DescribeLogGroups"]
     # Justification: logs:DescribeLogGroups has no resource types (AWS service reference) and the
     # SSM agent calls it for session logging.
-    #tfsec:ignore:aws-iam-no-policy-wildcards
+    #trivy:ignore:AVD-AWS-0057
     resources = ["*"]
   }
 
@@ -128,10 +129,10 @@ data "aws_iam_policy_document" "runner" {
       "logs:DescribeLogStreams",
       "logs:PutLogEvents",
     ]
-    # Justification: false positive. The resource is the log group ARN reference below; tfsec cannot
+    # Justification: false positive. The resource is the log group ARN reference below; the scanner cannot
     # resolve it at scan time and reports it as a wildcarded placeholder. The rendered policy is
     # scoped to this log group.
-    #tfsec:ignore:aws-iam-no-policy-wildcards
+    #trivy:ignore:AVD-AWS-0057
     resources = ["${aws_cloudwatch_log_group.sessions.arn}:*"]
   }
 
@@ -198,7 +199,7 @@ resource "aws_iam_role_policy" "runner" {
 
 # Justification: CloudWatch Logs encrypts log data at rest with a service-managed key; a customer
 # managed key would add a KMS key to maintain for a single-operator log group.
-#tfsec:ignore:aws-cloudwatch-log-group-customer-key
+#trivy:ignore:AVD-AWS-0017
 resource "aws_cloudwatch_log_group" "sessions" {
   name              = "/ssm/session-manager/${var.cluster_name}"
   retention_in_days = var.session_log_retention_in_days

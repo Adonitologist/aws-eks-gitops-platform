@@ -45,10 +45,19 @@ jobs:
       - name: Run TFLint Analysis
         run: tflint -f compact --recursive
 
-      - name: Run tfsec Security Scanner
-        uses: aquasecurity/tfsec-action@v1.0.3
+      # Pinned by commit SHA (Trivy had a supply-chain incident in 2026-03); the SHA is the peeled
+      # commit of tag v0.36.0. The scanner version is set explicitly because the action default is older.
+      - name: Run Trivy IaC Scanner
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          github_token: ${{ github.token }}
+          scan-type: config
+          scan-ref: .
+          exit-code: "1"
+          hide-progress: true
+          # The validate step above runs terraform init, which downloads upstream modules (with their
+          # example manifests) into .terraform; those are not ours to scan. Module resolution still works.
+          skip-dirs: "**/.terraform"
+          version: v0.75.0
 
   terraform-plan:
     name: "Terraform Plan Integration"
