@@ -18,6 +18,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4.2.0
 
+      - name: Check Karpenter manifest names match Terraform
+        run: bash scripts/ci/check-karpenter-names.sh
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3.1.2
         with:
