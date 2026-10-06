@@ -185,6 +185,16 @@ data "aws_iam_policy_document" "runner" {
     actions   = ["eks:DescribeCluster"]
     resources = ["arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"]
   }
+
+  # Used by the teardown script to confirm no load balancers tagged for this cluster remain.
+  # Justification: tag:GetResources has no resource-level support (AWS service reference), so "*" is the
+  # only possible resource and nothing else scopes it; the script filters by the cluster tag.
+  statement {
+    sid       = "TaggedResourcesLookup"
+    effect    = "Allow"
+    actions   = ["tag:GetResources"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role_policy" "runner" {

@@ -320,3 +320,9 @@ Delta against decision 6, the "Follow-ups" bullet on `SHA256SUMS` and the two "N
 - `user_data` imports the key into a throwaway keyring, checks the primary fingerprint, downloads the zip, `SHA256SUMS` and `SHA256SUMS.sig`, requires a `VALIDSIG` for that primary fingerprint, then runs `sha256sum -c` on the zip line. Any failure aborts the bootstrap (`set -e` and `die`).
 - kubectl still uses `kubectl_sha256` (copied over TLS from `dl.k8s.io`; detects corruption, not a compromised host).
 - Verified locally on 2026-10-06 (workstation, not the runner): the check logic accepts the real `SHA256SUMS` and rejects a file signed by a different key. NOT VERIFIED: `user_data` on the runner (gpg availability on AL2023, TCP 443 downloads of the `.sig`) until the live run. The runner EC2 is replaced on the next apply because `user_data` changed.
+
+## Addendum 2026-10-07: tag lookup for teardown
+
+The runner role gets `tag:GetResources` (resource `*`, the action has no resource-level support) so the teardown script can confirm, with `aws resourcegroupstaggingapi get-resources`, that no load balancers tagged for the cluster remain. This answers the open item "Whether the runner needs `elasticloadbalancing:Describe*`": it does not, the tag query replaces `aws elbv2 describe-load-balancers` in the runner flow. The change is an in-place update of the `stage2-runner` role policy; the operator applies stage 1.
+
+Not verified: the ALB tag key `elbv2.k8s.aws/cluster` set by the controller, and the call on the live runner.
