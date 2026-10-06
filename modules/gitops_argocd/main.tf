@@ -13,6 +13,10 @@ resource "helm_release" "argocd" {
 
   values = [
     yamlencode({
+      global = {
+        # Empty renders an ingress rule without a host match (the chart falls back to argocd.example.com otherwise)
+        domain = var.ingress_hostname
+      }
       server = {
         service = {
           type = "ClusterIP"
