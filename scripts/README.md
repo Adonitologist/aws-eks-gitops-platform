@@ -10,6 +10,8 @@ Flow: review -> ship -> land. Run each one yourself; Claude Code does not push o
   merges the PR (merge commit) once they are green. Then it switches to main, pulls
   (fast-forward only) and deletes the local and remote branch.
 
+`scripts/ci/` holds CI scripts run by the workflow, not by the operator.
+
 Claude Code cannot run `ship.ps1` or `land.ps1`: the PreToolUse hook `.claude/hooks/block-writes.ps1` blocks them. Run them in your own shell.
 
 `land.ps1` merges for real, so review the PR diff and body before running it.
