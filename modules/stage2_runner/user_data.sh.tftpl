@@ -28,6 +28,8 @@ fpr=C874011F0AB405110D02105534365D9472D7468F
 cat > hashicorp-pgp-key.asc <<'KEY_EOF'
 ${hashicorp_pgp_key}
 KEY_EOF
+command -v gpg > /dev/null || dnf install -y gnupg2-minimal || true
+command -v gpg > /dev/null || die "gpg not found and could not be installed"
 export GNUPGHOME="$workdir/gnupg"
 install -d -m 0700 "$GNUPGHOME"
 gpg --batch --quiet --import hashicorp-pgp-key.asc
