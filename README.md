@@ -20,7 +20,7 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 * **App of Apps Pattern:** The `root-app.yaml` dictates the entire cluster configuration. Any unauthorized manual changes made via `kubectl` are automatically detected and overwritten by ArgoCD to enforce Git as the single source of truth.
 * **Remote State Management:** Terraform state is stored remotely in Amazon S3 with native S3 state locking (`use_lockfile`, no DynamoDB), in two separate states (see [ADR 0001](docs/adr/0001-private-eks-endpoint.md)).
 * **Automated Quality Gates:** Integrated GitHub Actions pipeline enforces syntax validation, `tflint` standards, and Trivy (`trivy config`) static security analysis on every commit.
-* **SSL Offloading Prepared:** ArgoCD is deployed securely in ClusterIP mode without internal TLS, architected to allow the AWS Load Balancer Controller to handle Ingress routing and certificate termination. Without a custom domain (`argocd_hostname` empty) the ingress has no host match: read the ALB DNS name with `kubectl get ingress -n argocd` and open it over HTTP (no TLS listener yet); `argocd-cm` `url` stays `https://`.
+* **SSL Offloading Prepared:** ArgoCD is deployed securely in ClusterIP mode without internal TLS, architected to allow the AWS Load Balancer Controller to handle Ingress routing and certificate termination. Without a custom domain (`argocd_hostname` empty) the ingress has no host match: read the ALB DNS name with `kubectl get ingress -n argocd` and open it over HTTP (no TLS listener yet; the ALB only accepts the CIDRs in `argocd_allowed_cidrs`); `argocd-cm` `url` stays `https://`.
 
 ## Repository Structure
 
@@ -66,9 +66,10 @@ The stacks have separate states and must be applied in this order. Stage 2 reads
    ```bash
    cd stacks/cluster
    terraform init
-   terraform plan
-   terraform apply
+   terraform plan -var='argocd_allowed_cidrs=["203.0.113.10/32"]'
+   terraform apply -var='argocd_allowed_cidrs=["203.0.113.10/32"]'
    ```
+   `argocd_allowed_cidrs` has no default and restricts the Argo CD ALB (`alb.ingress.kubernetes.io/inbound-cidrs`) to those IPv4 CIDRs; `0.0.0.0/0` is rejected. Replace the documentation-range example with the egress IP of the network you browse from. Never commit the real value: pass it with `-var` (or `TF_VAR_argocd_allowed_cidrs`) typed in the runner session; `*.tfvars` and `*.auto.tfvars` are git-ignored. The runner shell history and the CloudWatch session log will contain it. A wrong or outdated CIDR locks you out of the ALB (not out of `kubectl port-forward`) until stage 2 is applied again with the right value.
 3. Create the root application (see Creating root-application below), then verify GitOps synchronization. Argo CD syncs `kubernetes/workloads`:
    ```bash
    aws eks update-kubeconfig --region us-east-1 --name eks-gitops-production
@@ -134,7 +135,7 @@ Teardown is the reverse of the apply order: cluster stack (stage 2) first, then 
 5. **Destroy the cluster stack (stage 2):**
    ```bash
    cd stacks/cluster
-   terraform destroy
+   terraform destroy -var='argocd_allowed_cidrs=["203.0.113.10/32"]'
    ```
 
 6. **Destroy the infra stack (stage 1):**

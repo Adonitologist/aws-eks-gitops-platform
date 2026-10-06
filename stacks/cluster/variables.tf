@@ -9,3 +9,8 @@ variable "argocd_hostname" {
   type        = string
   default     = ""
 }
+
+variable "argocd_allowed_cidrs" {
+  description = "IPv4 CIDRs allowed to reach the Argo CD ALB. Required, no default; pass it with -var (never commit it). 0.0.0.0/0 is rejected."
+  type        = list(string)
+}

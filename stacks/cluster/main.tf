@@ -25,6 +25,7 @@ module "eks_addons_helm" {
 module "gitops_argocd" {
   source           = "../../modules/gitops_argocd"
   ingress_hostname = var.argocd_hostname
+  allowed_cidrs    = var.argocd_allowed_cidrs
 
   depends_on = [module.eks_addons_helm]
 }
