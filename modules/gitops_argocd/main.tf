@@ -32,6 +32,7 @@ resource "helm_release" "argocd" {
             "alb.ingress.kubernetes.io/target-type"      = "ip"
             "alb.ingress.kubernetes.io/backend-protocol" = "HTTP"
             "alb.ingress.kubernetes.io/listen-ports"     = "[{\"HTTP\": 80}]"
+            "alb.ingress.kubernetes.io/inbound-cidrs"    = join(",", var.allowed_cidrs)
           }
         }
       }

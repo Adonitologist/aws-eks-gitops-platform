@@ -2,3 +2,5 @@
 contexto_*.txt
 estado_repositorio.txt
 .claude/settings.local.json
+*.tfvars
+*.auto.tfvars
