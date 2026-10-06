@@ -102,6 +102,8 @@ Destroying a GitOps cluster strictly requires draining dynamic resources prior t
 
 Teardown is the reverse of the apply order: cluster stack (stage 2) first, then infra. Steps 1 to 5 need the private endpoint, so start the stage 2 runner and run them there (see ADR 0002). Step 6 runs from your workstation: it also destroys the runner.
 
+Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on the runner; `--dry-run` previews it; set `ARGOCD_ALLOWED_CIDRS` so it prints the step 5 command with your CIDR). It stops with a clear error on any timeout or failed query, and never runs `terraform destroy`. The ALB check needs `tag:GetResources` on the runner role (stage 1 must be applied with that policy). The manual commands below are the fallback.
+
 1. **Delete the Argo CD ingress and the root application:**
    The Argo CD ALB ingress is created by the Helm release (stage 2), not by Argo CD, so deleting the root application does not remove it. Confirm the ingress name, then delete it so the AWS Load Balancer Controller dismantles its ALB. Then delete the root application, which removes the NodePool and EC2NodeClass it syncs from `kubernetes/workloads`.
    ```bash

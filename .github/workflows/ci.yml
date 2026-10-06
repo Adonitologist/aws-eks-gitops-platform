@@ -21,6 +21,10 @@ jobs:
       - name: Check Karpenter manifest names match Terraform
         run: bash scripts/ci/check-karpenter-names.sh
 
+      # shellcheck is preinstalled on ubuntu-latest
+      - name: Shellcheck teardown script
+        run: shellcheck scripts/teardown/teardown-stage2.sh
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3.1.2
         with:
