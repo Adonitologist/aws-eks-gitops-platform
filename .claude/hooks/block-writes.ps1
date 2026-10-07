@@ -31,6 +31,7 @@ $rules = [ordered]@{
   'aws write verb'                 = "$(P aws)$gap${w}($awsVerbs)-[a-z0-9-]+"
   'aws s3 write'                   = "$(P aws)$gap${w}s3 $gap${w}(cp|mv|rm|rb|mb|sync)$e"
   'operator scripts (push/merge)'  = "${w}(ship|land)\.ps1"
+  'operator scripts (teardown)'    = "(?:(?:^|[;&|(]) ?(?:\w+=\S* )*|$(P '(?:ba|z|da|k)?sh')$gap|$(P source)$gap)(?:[^\s;&|()]*/)?teardown-stage2\.sh$e"
 }
 
 foreach ($name in $rules.Keys) {

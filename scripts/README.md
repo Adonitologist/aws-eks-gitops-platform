@@ -15,6 +15,6 @@ Use `--dry-run` first; it prints the destroy command but never runs it.
 
 `scripts/ci/` holds CI scripts run by the workflow, not by the operator.
 
-Claude Code cannot run `ship.ps1` or `land.ps1`: the PreToolUse hook `.claude/hooks/block-writes.ps1` blocks them. Run them in your own shell.
+Claude Code cannot run `ship.ps1`, `land.ps1` or `teardown/teardown-stage2.sh`: the PreToolUse hook `.claude/hooks/block-writes.ps1` blocks them. Run them in your own shell (the runner, for the teardown script). `--dry-run` is blocked too, by design: the operator runs it.
 
 `land.ps1` merges for real, so review the PR diff and body before running it.
