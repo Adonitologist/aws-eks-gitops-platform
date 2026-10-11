@@ -334,3 +334,7 @@ Delta against the 2026-10-06 addendum, last bullet: the runner `user_data` faile
 Verified on a live AL2023 runner on 2026-10-11 (raw output not retained in the repo): `dnf provides /usr/bin/gpg-agent` listed only `gnupg2`; the install with `--allowerasing` removed only `gnupg2-minimal` and installed 13 packages; afterwards `command -v gpg-agent` returned `/usr/bin/gpg-agent`; the original script then completed: signature, SHA256, terraform 1.15.6, kubectl 1.35.9.
 
 Not verified: the fixed `user_data` end to end on a recreated runner. The change replaces the runner EC2 on the next apply (`user_data_replace_on_change`), if it exists in state.
+
+## Addendum 2026-10-11: live run results
+
+The live run of 2026-10-11 exercised the runner, the teardown script and `tag:GetResources` (all OK). Results table: ADR 0001, "Addendum 2026-10-11: live run results". The fixed `user_data` on a recreated runner is still not tested.
