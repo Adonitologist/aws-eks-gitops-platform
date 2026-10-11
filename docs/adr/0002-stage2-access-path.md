@@ -326,3 +326,11 @@ Delta against decision 6, the "Follow-ups" bullet on `SHA256SUMS` and the two "N
 The runner role gets `tag:GetResources` (resource `*`, the action has no resource-level support) so the teardown script can confirm, with `aws resourcegroupstaggingapi get-resources`, that no load balancers tagged for the cluster remain. This answers the open item "Whether the runner needs `elasticloadbalancing:Describe*`": it does not, the tag query replaces `aws elbv2 describe-load-balancers` in the runner flow. The change is an in-place update of the `stage2-runner` role policy; the operator applies stage 1.
 
 Not verified: the ALB tag key `elbv2.k8s.aws/cluster` set by the controller, and the call on the live runner.
+
+## Addendum 2026-10-11: gpg on the runner
+
+Delta against the 2026-10-06 addendum, last bullet: the runner `user_data` failed at the key import because `gnupg2-minimal` ships `gpg` but not `gpg-agent`. `user_data` now checks `command -v gpg-agent` and installs `gnupg2` with `dnf install -y --allowerasing gnupg2`; the `|| true` is removed and the bootstrap dies with a clear message if `gpg-agent` is still missing.
+
+Verified on a live AL2023 runner on 2026-10-11 (raw output not retained in the repo): `dnf provides /usr/bin/gpg-agent` listed only `gnupg2`; the install with `--allowerasing` removed only `gnupg2-minimal` and installed 13 packages; afterwards `command -v gpg-agent` returned `/usr/bin/gpg-agent`; the original script then completed: signature, SHA256, terraform 1.15.6, kubectl 1.35.9.
+
+Not verified: the fixed `user_data` end to end on a recreated runner. The change replaces the runner EC2 on the next apply (`user_data_replace_on_change`), if it exists in state.
