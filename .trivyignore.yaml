@@ -1,0 +1,5 @@
+misconfigurations:
+  - id: AVD-KSV-0125
+    paths:
+      - "kubernetes/workloads/sample-app/deployment.yaml"
+    statement: Official nginxinc image, pinned by sha256 digest.
