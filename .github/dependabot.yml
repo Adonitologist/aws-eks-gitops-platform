@@ -34,6 +34,10 @@ updates:
       terraform-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # Kept but ineffective for Terraform: verified 2026-10-11 that Dependabot
+    # stores no ignore condition from this block ("@dependabot show <dep> ignore
+    # conditions" shows an empty config row). Discard a major bump by commenting
+    # "@dependabot ignore this major version" on the PR instead.
     ignore:
       - dependency-name: "hashicorp/aws"
         update-types: ["version-update:semver-major"]
