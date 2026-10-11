@@ -111,3 +111,32 @@ Open items (not verified by the live run):
 - Terraform GPG signature check on the runner.
 - CloudWatch and NAT costs.
 - Whether the runner needs `elasticloadbalancing:Describe*`.
+
+## Addendum 2026-10-11: live run results
+
+Measured by the operator on a live run of 2026-10-11; raw output retained locally, masked, not in the repo. The original text and the 2026-10-04 addendum are unchanged; this addendum closes some of its open items.
+
+| Item | Result |
+|---|---|
+| `ec2:CreateFleet` under the Free Tier policy | OK: `c7i-flex.large`, on-demand; about 35 s from Pending pod to Ready node |
+| Node capacity of the Karpenter node | allocatable pods 29, cpu 1930m, memory 3114Mi |
+| Consolidation of empty nodes | OK: about 4 min after the load was deleted |
+| Argo CD ingress | `argocd-server` ingress with host `*`; ALB created by the LB controller |
+| UI access | reachable from the allowed CIDR (login page) |
+| ALB tag | `elbv2.k8s.aws/cluster=eks-gitops-production` |
+| `tag:GetResources` from the runner | works |
+| Root application | created with `kubectl apply -f`; Synced/Healthy; NodePool and EC2NodeClass READY |
+| vpc-cni `enableNetworkPolicy` default | `aws-node` runs with `--enable-network-policy=false` |
+| Teardown script | OK: ingress deleted, no ALB left after about 31 s; NodePool and EC2NodeClass were already removed by the root-app cascade |
+| Destroy | stage 2: 4 resources; stage 1: 117 resources; no leftovers afterwards |
+| Stage 1 apply duration | about 13 min (EKS control plane 10m21s) |
+
+Findings:
+
+- `gnupg2-minimal` lacks `gpg-agent` (fixed in PR #39, see ADR 0002).
+- `kubectl top` fails because metrics-server is not installed. System pod memory was measured only as requests, roughly 45-80% of allocatable.
+- Kubernetes warns about the unqualified finalizer name in `kubernetes/argocd-apps/root-app.yaml`.
+
+Not tested: rejection of the ALB from another network, the teardown wait with live Karpenter nodes, the fixed `user_data` on a recreated runner.
+
+Account id, ARNs, the ALB DNS name and the operator IP are masked in all records of this run.
