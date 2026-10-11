@@ -1,7 +1,7 @@
 # 1. IAM Role for AWS Load Balancer Controller (IRSA)
 module "lb_role" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.30"
+  version = "~> 6.8"
 
   role_name                              = "aws-lb-ctrl-${var.cluster_name}"
   attach_load_balancer_controller_policy = true
