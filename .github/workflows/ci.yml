@@ -61,6 +61,7 @@ jobs:
           # The validate step above runs terraform init, which downloads upstream modules (with their
           # example manifests) into .terraform; those are not ours to scan. Module resolution still works.
           skip-dirs: "**/.terraform"
+          trivyignores: .trivyignore.yaml
           version: v0.75.0
 
   terraform-plan:
