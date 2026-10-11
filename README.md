@@ -22,6 +22,96 @@ A production-grade, declarative Cloud-Native infrastructure engineered by Juan E
 * **Automated Quality Gates:** Integrated GitHub Actions pipeline enforces syntax validation, `tflint` standards, and Trivy (`trivy config`) static security analysis on every commit.
 * **SSL Offloading Prepared:** ArgoCD is deployed securely in ClusterIP mode without internal TLS, architected to allow the AWS Load Balancer Controller to handle Ingress routing and certificate termination. Without a custom domain (`argocd_hostname` empty) the ingress has no host match: read the ALB DNS name with `kubectl get ingress -n argocd` and open it over HTTP (no TLS listener yet; the ALB only accepts the CIDRs in `argocd_allowed_cidrs`); `argocd-cm` `url` stays `https://`.
 
+## Architecture Diagram
+
+Every box maps to a file in this repository. Solid arrows are runtime access or deployment paths; dotted arrows are reads of Git content or Terraform state.
+
+```mermaid
+flowchart LR
+    OP["Operator workstation"]
+    GH["GitHub repository<br/>(branch main)"]
+
+    subgraph CI["GitHub Actions (.github/workflows/ci.yml)"]
+        direction TB
+        CHK["tflint, Trivy config,<br/>shellcheck, validate,<br/>check-karpenter-names"]
+        OIDC["OIDC role<br/>(vars.AWS_CI_ROLE_ARN)"]
+        PLAN["plan, stage 1 only"]
+        CHK --> OIDC --> PLAN
+    end
+
+    subgraph AWS["AWS account"]
+        SSM["SSM Session Manager"]
+        S3[("S3 state bucket<br/>terraform.tfstate (stage 1)<br/>cluster.tfstate (stage 2)")]
+
+        subgraph VPC["VPC (modules/vpc, flow logs, dedicated NACLs)"]
+            subgraph PUB["Public subnets"]
+                ALB["ALB<br/>(Argo CD ingress)"]
+                NAT["NAT gateway<br/>(single)"]
+            end
+            subgraph PRIV["Private subnets"]
+                RUN["Stage 2 runner EC2<br/>(modules/stage2_runner)"]
+                API["EKS private API endpoint<br/>(modules/eks_cluster)"]
+                SYS["System node group<br/>system_components"]
+                KARP["Karpenter nodes<br/>(NodePool default)"]
+                ARGO["Argo CD<br/>root-application"]
+            end
+        end
+    end
+
+    subgraph TF["Terraform stacks"]
+        direction TB
+        S1["Stage 1: stacks/infra<br/>vpc, eks_cluster, eks_addons,<br/>stage2_runner"]
+        S2["Stage 2: stacks/cluster<br/>eks_addons_helm, gitops_argocd"]
+    end
+
+    WL["kubernetes/workloads<br/>NodePool, EC2NodeClass"]
+
+    OP --> SSM --> RUN
+    RUN --> API
+    API --- SYS
+    SYS -->|"Karpenter controller"| KARP
+    S1 -.->|"state"| S3
+    S2 -.->|"state"| S3
+    OP -->|"stage 1 run from workstation"| S1
+    RUN -->|"stage 2 run on runner"| S2
+    S2 -->|"Helm: LB controller,<br/>Karpenter, Argo CD"| API
+    GH --- WL
+    ARGO -.->|"auto-sync, prune, selfHeal"| WL
+    WL -->|"defines"| KARP
+    ALB --> ARGO
+    PRIV -->|"TCP 443 egress"| NAT
+    GH --> CI
+    PLAN -.->|"read state"| S3
+```
+
+Notes:
+
+* Stage 1 (`stacks/infra`) is run from the workstation; stage 2 (`stacks/cluster`) is run on the runner because the API endpoint is private ([ADR 0001](docs/adr/0001-private-eks-endpoint.md), [ADR 0002](docs/adr/0002-stage2-access-path.md)).
+* CI plans stage 1 only; it never plans or applies stage 2 and has no apply job.
+* `kubernetes/argocd-apps/root-app.yaml` is applied by hand once; Argo CD then syncs `kubernetes/workloads` from `main`.
+
+### Cost
+
+Reference table for the live test. The actual cost is not known yet.
+
+| Run | Duration and scope | Actual cost |
+|-----|--------------------|-------------|
+| Live test 2026-10-11 | about 1h10m, EKS + NAT + 2 system nodes + runner + up to 2 Karpenter nodes | TO BE FILLED from Billing |
+
+Main hourly cost drivers, approximate AWS list prices (us-east-1, on-demand), NOT VERIFIED; check the AWS pricing pages and Billing before relying on them:
+
+| Driver | Approx. hourly price (NOT VERIFIED) |
+|--------|-------------------------------------|
+| EKS control plane | about USD 0.10 |
+| NAT gateway (single) | about USD 0.045, plus per-GB data processing |
+| System nodes, m7i-flex.large x 2 | about USD 0.10 each |
+| Karpenter nodes, m7i-flex.large or c7i-flex.large (up to 2) | about USD 0.09 to 0.10 each |
+| Stage 2 runner, t3.small (only while running) | about USD 0.02 |
+| ALB (Argo CD ingress) | about USD 0.02, plus LCU usage |
+| Public IPv4 addresses (NAT, ALB) | about USD 0.005 each |
+
+Not itemized: CloudWatch (flow logs, session logs), S3 state storage and data transfer. Use the [Safe Teardown Protocol](#safe-teardown-protocol-cost-prevention) to stop the charges.
+
 ## Repository Structure
 
 ```text
