@@ -1,0 +1,41 @@
+version: 2
+
+updates:
+  # Pinned action SHAs and their "# vX.Y.Z" comments. One PR per week at most.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  # Providers and registry modules, both stacks and every module directory.
+  # Major bumps are ignored: constraints are pinned on purpose (~> 5.0 aws,
+  # ~> 20.0 eks, ~> 5.0 vpc, ~> 2.x kubernetes/helm) and need a deliberate PR.
+  - package-ecosystem: "terraform"
+    directories:
+      - "/stacks/infra"
+      - "/stacks/cluster"
+      - "/modules/*"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    groups:
+      terraform-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore"
