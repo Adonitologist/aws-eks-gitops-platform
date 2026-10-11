@@ -66,6 +66,11 @@ jobs:
   terraform-plan:
     name: "Terraform Plan Integration"
     needs: terraform-validate-security
+    # Dependabot runs are treated like fork PRs: read-only token, no Actions
+    # secrets, and no OIDC role or repo variable is expected to be available, so
+    # Configure AWS Credentials would fail. The operator runs a local plan
+    # before merging a Dependabot PR.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
