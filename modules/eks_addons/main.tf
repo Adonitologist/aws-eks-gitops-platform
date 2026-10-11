@@ -54,7 +54,7 @@ resource "aws_iam_policy" "karpenter_controller_extra" {
 #trivy:ignore:AVD-AWS-0342
 module "karpenter" {
   source  = "terraform-aws-modules/eks/aws//modules/karpenter"
-  version = "~> 20.0"
+  version = "~> 21.26"
 
   cluster_name = var.cluster_name
 
