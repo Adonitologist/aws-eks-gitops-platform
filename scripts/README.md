@@ -5,7 +5,8 @@ Flow: review -> ship -> land. Run each one yourself; Claude Code does not push o
 - `review.ps1`: on a feature branch, copies to the clipboard the status, log, diff stat,
   ASCII and 12-digit id counts on added lines, line endings and the full diff against main.
 - `ship.ps1 -Title <t> -BodyFile <path>`: refuses main/master or a dirty tree, pushes the branch,
-  opens the PR with the body file, then watches the checks. It never merges.
+  opens the PR with the body file, waits up to 90 s for the checks to register (fails if none
+  appear), then watches them. It never merges.
 - `land.ps1 -Number <n>`: requires an open PR with a non-empty body, waits for the checks and
   merges the PR (merge commit) once they are green. Then it switches to main, pulls
   (fast-forward only) and deletes the local and remote branch.
