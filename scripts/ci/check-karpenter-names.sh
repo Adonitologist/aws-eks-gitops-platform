@@ -40,4 +40,29 @@ while read -r t; do
   [ "$t" = "$cluster" ] || fail "discovery tag: manifest='$t' terraform='$cluster'"
 done <<< "$tags"
 
-echo "OK: env=$env cluster=$cluster role=$role"
+# NodePool nodeClassRef.name must equal the EC2NodeClass metadata.name. The awk walks the YAML
+# documents (split on "---") and prints "<nodepools>|<nodeclasses>|<ref name>|<nodeclass name>".
+IFS='|' read -r n_pools n_classes ref_name class_name <<< "$(tr -d '\r' < "$yaml" | awk '
+  function val(s) { sub(/^[^:]*:[ \t]*/, "", s); sub(/[ \t]*#.*$/, "", s); gsub(/["'"'"']/, "", s); sub(/[ \t]+$/, "", s); return s }
+  function ind(s) { match(s, /^ */); return RLENGTH }
+  function flush() {
+    if (kind == "NodePool") { pools++; ref = refname }
+    if (kind == "EC2NodeClass") { classes++; cname = name }
+    kind = ""; name = ""; refname = ""; inmeta = 0; inref = 0
+  }
+  /^---[ \t]*$/ { flush(); next }
+  /^kind:/ { kind = val($0); next }
+  /^metadata:/ { inmeta = 1; next }
+  /^[^ \t#]/ { inmeta = 0 }
+  inmeta && /^  name:/ { name = val($0); next }
+  inref && ind($0) <= refind && $0 !~ /^[ \t]*$/ { inref = 0 }
+  /^[ \t]+nodeClassRef:[ \t]*$/ { inref = 1; refind = ind($0); next }
+  inref && /^[ \t]+name:/ { refname = val($0); next }
+  END { flush(); print pools + 0 "|" classes + 0 "|" ref "|" cname }')"
+[ "$n_pools" = 1 ] && [ "$n_classes" = 1 ] \
+  || fail "expected exactly one NodePool and one EC2NodeClass in $yaml (found $n_pools NodePool, $n_classes EC2NodeClass)"
+[ -n "$ref_name" ] || fail "no spec.template.spec.nodeClassRef.name found for the NodePool in $yaml"
+[ -n "$class_name" ] || fail "no metadata.name found for the EC2NodeClass in $yaml"
+[ "$ref_name" = "$class_name" ] || fail "nodeClassRef.name: NodePool='$ref_name' EC2NodeClass='$class_name'"
+
+echo "OK: env=$env cluster=$cluster role=$role nodeclass=$class_name"
