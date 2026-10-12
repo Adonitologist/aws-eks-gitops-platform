@@ -15,7 +15,7 @@ trivy config . --skip-dirs '**/.terraform'            # security scan, whole rep
 terraform init && terraform plan -var="environment=production" -out=tfplan
 ```
 
-CI never plans, applies or inits stage 2 with a backend. The plan job uses GitHub OIDC with a role ARN hardcoded in `ci.yml`. There is no apply job: `terraform apply` is run by hand, infra first, then cluster (stage 2 runs on the SSM-only runner EC2 that stage 1 creates, see `docs/adr/0002-stage2-access-path.md`). Before `terraform destroy`, follow the teardown order in README "Safe Teardown Protocol" (delete the ArgoCD root app, wait for the ALBs to disappear, delete Karpenter NodePools/EC2NodeClasses, destroy `stacks/cluster`, then `stacks/infra`) or Spot instances and VPC dependencies get orphaned. Design rationale: `docs/adr/0001-private-eks-endpoint.md` and `docs/adr/0002-stage2-access-path.md`.
+CI never plans, applies or inits stage 2 with a backend. The plan job uses GitHub OIDC with the role ARN read from the repository variable `vars.AWS_CI_ROLE_ARN` (`ci.yml`, step Configure AWS Credentials). There is no apply job: `terraform apply` is run by hand, infra first, then cluster (stage 2 runs on the SSM-only runner EC2 that stage 1 creates, see `docs/adr/0002-stage2-access-path.md`). Before `terraform destroy`, follow the teardown order in README "Safe Teardown Protocol" (delete the ArgoCD root app, wait for the ALBs to disappear, delete Karpenter NodePools/EC2NodeClasses, destroy `stacks/cluster`, then `stacks/infra`) or Spot instances and VPC dependencies get orphaned. Design rationale: `docs/adr/0001-private-eks-endpoint.md` and `docs/adr/0002-stage2-access-path.md`.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 - Never push, merge, apply or destroy; the operator does. No `terraform apply/destroy`, `kubectl apply/delete` or AWS write commands.
 - A PreToolUse hook (`.claude/hooks/block-writes.ps1`) blocks mutating commands in any spelling (full paths, `bash -c`); extend its `$rules` table when adding a tool. It is a backstop, not a boundary: the read-only IAM role is the real guard.
 - Label every claim VERIFIED (raw output or file:line) or NOT VERIFIED. Never say done or perfect unless output shown proves it.
-- Never print the AWS account id or role ARNs; mask them in reports and diffs.
+- Never print the AWS account id or role ARNs in command output, screenshots, reports, diffs or PR text; mask them. The account id is part of the Terraform state bucket name by design (ADR 0001, "Addendum 2026-10-12: account id in the state bucket name"); do not write the id itself.
 - Plans: profile `readonly` with `-lock=false`, see Output limits. Claude Code uses only the `readonly` profile and never `tf-admin`, `tf-admin-tf` or `default`; the hook `.claude/hooks/block-writes.ps1` and the `Read`/`Edit` deny rules for `~/.aws/**` enforce it (limits in ADR 0003, "Addendum 2026-10-12: enforcement").
 - Stage by explicit path only. Never commit `stacks/infra/tfplan` or untracked files.
 - If `git diff --stat` shows a whole-file change, stop and report (`.gitattributes` enforces LF).
@@ -74,7 +74,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 
 - trivy:ignore lines must sit directly above the module line (one ID per line); justification comments go above them, never between.
 
-- GitHub OIDC uses immutable subject: sub = repo:Adonitologist@90419501/aws-eks-gitops-platform@1383441716:<ref|pull_request>. Trust policy must use these exact values with StringEquals, no wildcards.
+- GitHub OIDC uses immutable subject: sub = repo:Adonitologist@<owner id>/aws-eks-gitops-platform@<repo id>:<ref|pull_request>. Trust policy must use these exact values with StringEquals, no wildcards.
 - CI role github-actions-terraform-role-jeh: ReadOnlyAccess + inline terraform-state-access (state read, .tflock read/write/delete). No admin. Re-check CI plan after the first apply.
 
 ## Addendum 2026-10-12: live test 2

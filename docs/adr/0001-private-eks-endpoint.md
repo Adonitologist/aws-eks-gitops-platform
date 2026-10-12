@@ -203,3 +203,14 @@ NOT VERIFIED:
 - Rejection of the ALB from a non-allowed network: from a phone on mobile data the ALB did not answer (timeout), observed by the operator, not independently verified.
 - Cost: Cost Explorer for 2026-10-12 will be added in a later PR.
 - Positive detection of the `-AfterDestroy` branch of `check-leftovers.ps1` (runner, managed nodes, NAT gateway, Elastic IP, VPC): it was only run when everything was already gone (negative case, OK). The default-mode instance filter was exercised positively (Karpenter node).
+
+## Addendum 2026-10-12: account id in the state bucket name
+
+The Terraform state bucket name ends with a 12-digit number, which is the AWS account id: it equals the account id returned by `aws sts get-caller-identity` in the live test of 2026-10-12, read by the operator and not repeated here (the bucket name is in `stacks/infra/backend.tf`, `stacks/cluster/backend.tf`, `stacks/infra/variables.tf` and `stacks/cluster/main.tf`). Decision: keep the name.
+
+- Renaming needs a new bucket, a state migration for both stacks and changes to the IAM policies that name the bucket (runner role and CI role).
+- The Git history keeps the old name anyway, so a rename would not remove it from the repository.
+- An account id is not a credential. That AWS documentation treats it as non-secret is from memory, NOT VERIFIED here.
+- The text of this repository does not otherwise write the id; reports and PR text mask it (CLAUDE.md).
+
+Consequence: anyone reading the repository can learn the account id from the bucket name. This is an accepted, documented trade-off.
