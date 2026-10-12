@@ -136,11 +136,22 @@ Not itemized: CloudWatch (flow logs, session logs), S3 state storage and data tr
 `-- docs/adr/                      # Architecture decision records
 ```
 
-Design decisions: [ADR 0001: private EKS endpoint and two-stage split](docs/adr/0001-private-eks-endpoint.md), [ADR 0002: stage 2 access path](docs/adr/0002-stage2-access-path.md).
+Design decisions: [ADR 0001: private EKS endpoint and two-stage split](docs/adr/0001-private-eks-endpoint.md), [ADR 0002: stage 2 access path](docs/adr/0002-stage2-access-path.md), [ADR 0003: operator credentials](docs/adr/0003-operator-credentials.md).
+
+## Operator credentials
+The workstation IAM user has no direct permissions: it can only assume the Terraform operator role (administrator, MFA required, 1 hour session) and the read-only role used by Claude Code. Stage 1 plan, apply and destroy and `scripts/teardown/check-leftovers.ps1` run with the `tf-admin-tf` profile; stage 2 runs on the runner with its instance role.
+
+```powershell
+aws sts get-caller-identity --profile tf-admin   # asks for the MFA code, caches a 1 hour session
+$env:AWS_PROFILE = 'tf-admin-tf'                  # then run Terraform as usual
+```
+
+The session lasts one hour; a Terraform run longer than that is expected to fail (NOT VERIFIED), so repeat the first command and re-run. The profile `readonly` is for read-only plans (`-lock=false`) and Claude Code. Design and verification status: [ADR 0003](docs/adr/0003-operator-credentials.md).
+
 ## Deployment Instructions
 **Prerequisites**
 
-* AWS CLI configured with active credentials.
+* AWS CLI with the `tf-admin` and `tf-admin-tf` profiles configured (see Operator credentials).
 * Terraform v1.10+ (native S3 locking; CI uses 1.15.6).
 * An isolated S3 bucket for remote state, bootstrapped out-of-band to prevent accidental destruction. Its name in `stacks/infra/backend.tf` and `stacks/cluster/backend.tf` must point to it.
 
@@ -234,7 +245,7 @@ Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on t
    ```
 
 6. **Check for leftovers (gate before stage 1):**
-   Run from the workstation with the `readonly` or `default` profile. It is read-only (aws describe/list calls) and lists only ids.
+   Run from the workstation with the `readonly` profile, or `tf-admin-tf` after `tf-admin` has cached a session (see Operator credentials). It is read-only (aws describe/list calls) and lists only ids.
    ```powershell
    .\scripts\teardown\check-leftovers.ps1
    ```
