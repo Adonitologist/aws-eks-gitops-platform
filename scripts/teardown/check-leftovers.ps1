@@ -18,8 +18,10 @@
 #   <cluster> through the launch template tag_specifications (modules/eks_cluster/main.tf tags).
 # Karpenter docs (https://karpenter.sh/docs/concepts/nodeclasses/, "spec.tags"): instances carry
 #   karpenter.sh/nodepool and eks:eks-cluster-name = <cluster>.
-# NOT VERIFIED live until the live test: the Karpenter tags with controller 1.14.1, the tags EKS adds
-# to managed node group instances, and the exact Name values of the NAT gateway and Elastic IP.
+# Verified in live test 3 (2026-10-12): the Karpenter tags with controller 1.14.1 (karpenter.sh/nodepool
+# present, karpenter.sh/discovery absent on the Karpenter node), the tags EKS adds to managed node group
+# instances (karpenter.sh/discovery present, karpenter.sh/nodepool absent), and the Name value of the NAT
+# gateway and Elastic IP (vpc-<cluster>-<az>, both).
 # "terminated" instances and "deleted" NAT gateways stay listed for a while and are excluded by state.
 #
 # Usage: .\scripts\teardown\check-leftovers.ps1 [-ClusterName <name>] [-Region <region>] [-AfterDestroy]
