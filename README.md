@@ -247,3 +247,7 @@ Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on t
    ```
 
 > PowerShell note: quote the flag, for example `"-out=destroy.tfplan"`. A stale plan must be re-planned and applied immediately.
+
+## License
+
+MIT, see LICENSE.
