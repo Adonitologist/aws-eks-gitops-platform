@@ -1,4 +1,4 @@
-# Enterprise AWS EKS GitOps Platform
+# AWS EKS GitOps Platform: private cluster, two-stage Terraform, Argo CD and Karpenter
 
 [![Terraform CI](https://github.com/Adonitologist/aws-eks-gitops-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Adonitologist/aws-eks-gitops-platform/actions/workflows/ci.yml)
 ![Terraform](https://img.shields.io/badge/IaC-Terraform_v1.15.6-844FBA?logo=terraform)
@@ -6,21 +6,63 @@
 ![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-EF7B4D?logo=argo)
 ![AWS](https://img.shields.io/badge/Cloud-AWS_EKS-232F3E?logo=amazon-aws)
 
-A production-grade, declarative Cloud-Native infrastructure engineered by Juan E. This repository establishes a strict GitOps methodology on Amazon Elastic Kubernetes Service (EKS). It separates infrastructure provisioning from application lifecycle management: Terraform handles the foundational AWS layer, while ArgoCD assumes complete control over cluster state using the App of Apps pattern.
+A single-environment Amazon EKS platform built and operated by one person as a portfolio project. Terraform is split into two stacks: stage 1 creates the VPC, a private-endpoint EKS cluster and an SSM-only runner; stage 2 runs on that runner and installs the AWS Load Balancer Controller, Karpenter and Argo CD, which then syncs the manifests in this repository. The design decisions, trade-offs and live-test results are recorded in the [ADRs](docs/adr/). The platform was applied and destroyed in live tests (see the ADR 0001 addenda); it is a reference implementation, not a multi-team production platform.
+
+Sections: [What this demonstrates](#what-this-demonstrates), [Quick start](#quick-start), [Limitations](#limitations), [Cost](#cost), [Safe Teardown Protocol](#safe-teardown-protocol-cost-prevention), [How this repository is worked on](#how-this-repository-is-worked-on), [Author](#author).
+
+## What this demonstrates
+
+| Skill | Where |
+|-------|-------|
+| Private EKS endpoint and a way to operate it without a bastion or VPN | [ADR 0001](docs/adr/0001-private-eks-endpoint.md), [ADR 0002](docs/adr/0002-stage2-access-path.md), [`modules/stage2_runner`](modules/stage2_runner) |
+| Splitting Terraform state and providers across two stacks | [`stacks/infra`](stacks/infra), [`stacks/cluster`](stacks/cluster), [ADR 0001](docs/adr/0001-private-eks-endpoint.md) |
+| Network design with dedicated NACLs and flow logs | [`modules/vpc/main.tf`](modules/vpc/main.tf) |
+| Workload identity with IRSA and EKS Pod Identity | [`modules/eks_addons/main.tf`](modules/eks_addons/main.tf) |
+| Karpenter autoscaling under a restricted account policy | [`kubernetes/workloads/karpenter-nodepool.yaml`](kubernetes/workloads/karpenter-nodepool.yaml), [ADR 0001](docs/adr/0001-private-eks-endpoint.md) |
+| GitOps with Argo CD (App of Apps) | [`kubernetes/argocd-apps/root-app.yaml`](kubernetes/argocd-apps/root-app.yaml), [`modules/gitops_argocd`](modules/gitops_argocd) |
+| Pod Security admission (restricted) and default-deny network policy | [`kubernetes/workloads/sample-app`](kubernetes/workloads/sample-app) |
+| CI with OIDC, tflint, Trivy and a manifest name check | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`scripts/ci`](scripts/ci) |
+| Operator credential hardening and its limits | [ADR 0003](docs/adr/0003-operator-credentials.md) |
+| Teardown procedure and leftover detection, exercised in live tests | [Safe Teardown Protocol](#safe-teardown-protocol-cost-prevention), [`scripts/teardown`](scripts/teardown) |
+| Cost tracking of live runs | [Cost](#cost) |
+
+## Quick start
+
+Needs an AWS account, an S3 state bucket and the operator profiles described in [Operator credentials](#operator-credentials).
+
+1. Read [Operator credentials](#operator-credentials) and the prerequisites in [Deployment Instructions](#deployment-instructions).
+2. Apply stage 1 (`stacks/infra`) from the workstation.
+3. Start the stage 2 runner, open an SSM session and apply stage 2 (`stacks/cluster`) there.
+4. Create the root application, then run the [Post-Deploy Checklist](#post-deploy-checklist).
+5. Destroy everything the same day with the [Safe Teardown Protocol](#safe-teardown-protocol-cost-prevention).
+
+## Limitations
+
+- Single environment (`production`); the Karpenter manifest check validates only that environment ([ADR 0001](docs/adr/0001-private-eks-endpoint.md), "Karpenter names and Kustomize").
+- Argo CD is served over HTTP: the ALB has no TLS listener (`modules/gitops_argocd/main.tf:34`).
+- One NAT gateway, so no NAT high availability (`modules/vpc/main.tf:54`).
+- One operator. The operator role has `AdministratorAccess`, an accepted trade-off ([ADR 0003](docs/adr/0003-operator-credentials.md)).
+- Anyone who can start a session on the stage 2 runner has cluster-admin in practice ([ADR 0002](docs/adr/0002-stage2-access-path.md)).
+- Because of the Free Tier plan policy, the NodePool is limited to on-demand, two instance types and cpu 8 / memory 32Gi (`kubernetes/workloads/karpenter-nodepool.yaml`); the Spot denial itself was not tested live.
+- CI plans stage 1 only; stage 2 is never planned or applied in CI and there is no apply job (`.github/workflows/ci.yml`).
+- The root application is applied by hand ([Creating root-application](#creating-root-application)); Argo CD self-heal is configured but not demonstrated live.
+- No monitoring or backup module exists in `modules/`; metrics-server is not installed ([ADR 0001](docs/adr/0001-private-eks-endpoint.md), addendum 2026-10-11).
+- A Terraform run longer than the 1 hour operator session was not exercised ([ADR 0001](docs/adr/0001-private-eks-endpoint.md), live test 3 addendum).
+- The state bucket name contains the AWS account id by design; it was kept on purpose (see ADR 0001, "Addendum 2026-10-12: account id in the state bucket name").
 
 ## System Architecture & GitOps Flow
 
-1. **Infrastructure as Code (Terraform):** Provisions a dedicated VPC with multi-AZ topology, private subnets with auto-discovery tags, and a managed EKS control plane.
-2. **Zero-Trust Identity (AWS IAM & IRSA):** Implements OpenID Connect (OIDC) to map native AWS IAM roles directly to Kubernetes Service Accounts, adhering to the principle of least privilege.
-3. **Dynamic Compute (Karpenter):** Replaces traditional Auto Scaling Groups. Karpenter observes unschedulable pods and natively provisions right-sized, cost-optimized EC2 instances (Spot and On-Demand) directly from the AWS API in milliseconds.
+1. **Infrastructure as Code (Terraform):** Provisions a dedicated VPC with subnets in at least two availability zones (`azs` is validated to have two or more) and a single NAT gateway, private subnets with auto-discovery tags, and a managed EKS control plane.
+2. **Workload identity and network limits:** IRSA (OIDC) maps an IAM role to the AWS Load Balancer Controller and EKS Pod Identity serves Karpenter (`modules/eks_addons/main.tf`); the Argo CD ALB accepts only the CIDRs in `argocd_allowed_cidrs`; a default-deny network policy exists only in the `sample-app` namespace. Least privilege does not apply everywhere: the operator role is `AdministratorAccess` (accepted trade-off, [ADR 0003](docs/adr/0003-operator-credentials.md)) and the stage 2 runner is cluster-admin ([ADR 0002](docs/adr/0002-stage2-access-path.md)).
+3. **Dynamic Compute (Karpenter):** Karpenter observes unschedulable pods and provisions EC2 instances directly through the EC2 API; the system components run on one managed node group. The NodePool is limited to on-demand `m7i-flex.large` and `c7i-flex.large` because the published Free Tier plan policy denies Spot (`kubernetes/workloads/karpenter-nodepool.yaml`; a Spot launch was not tried live). A node became Ready in about 33 to 37 s in live tests 2 and 3 ([ADR 0001](docs/adr/0001-private-eks-endpoint.md) addenda).
 4. **Continuous Deployment (ArgoCD):** Installed via Helm during the infrastructure bootstrap, ArgoCD syncs `kubernetes/workloads` from this Git repository once the root application is created (see "Creating root-application" below), continuously reconciling the cluster state against the defined manifests.
 
 ## Core Technical Highlights
 
-* **App of Apps Pattern:** The `root-app.yaml` dictates the entire cluster configuration. Any unauthorized manual changes made via `kubectl` are automatically detected and overwritten by ArgoCD to enforce Git as the single source of truth.
+* **App of Apps Pattern:** The `root-app.yaml` dictates the entire cluster configuration. The application has `selfHeal: true` and `prune: true` (`kubernetes/argocd-apps/root-app.yaml`), so manual `kubectl` changes to synced resources should be reverted; reverting a manual change was not demonstrated live (NOT VERIFIED).
 * **Remote State Management:** Terraform state is stored remotely in Amazon S3 with native S3 state locking (`use_lockfile`, no DynamoDB), in two separate states (see [ADR 0001](docs/adr/0001-private-eks-endpoint.md)).
-* **Automated Quality Gates:** Integrated GitHub Actions pipeline enforces syntax validation, `tflint` standards, and Trivy (`trivy config`) static security analysis on every commit.
-* **SSL Offloading Prepared:** ArgoCD is deployed securely in ClusterIP mode without internal TLS, architected to allow the AWS Load Balancer Controller to handle Ingress routing and certificate termination. Without a custom domain (`argocd_hostname` empty) the ingress has no host match: read the ALB DNS name with `kubectl get ingress -n argocd` and open it over HTTP (no TLS listener yet; the ALB only accepts the CIDRs in `argocd_allowed_cidrs`); `argocd-cm` `url` stays `https://`.
+* **Automated Quality Gates:** The GitHub Actions pipeline runs `terraform validate` for both stacks, `tflint`, Trivy (`trivy config`), shellcheck and the Karpenter name check on every pull request, and plans stage 1 only; stage 2 is not planned in CI (`.github/workflows/ci.yml`).
+* **HTTP only, TLS not configured:** Argo CD runs as a ClusterIP service without internal TLS (`--insecure`) behind an ALB ingress, and the ALB has only an HTTP listener. This is a documented limitation; the ingress is meant to let the AWS Load Balancer Controller terminate TLS once a certificate and domain exist. Without a custom domain (`argocd_hostname` empty) the ingress has no host match: read the ALB DNS name with `kubectl get ingress -n argocd` and open it over HTTP (no TLS listener yet; the ALB only accepts the CIDRs in `argocd_allowed_cidrs`); `argocd-cm` `url` stays `https://`.
 
 ## Architecture Diagram
 
@@ -119,21 +161,34 @@ Not itemized: CloudWatch (flow logs, session logs), S3 state storage and data tr
 
 ```text
 .
-|-- .github/workflows/ci.yml       # Automated security and validation pipeline
+|-- .claude/                       # Claude Code settings, slash commands and the PreToolUse hook (see "How this repository is worked on")
+|-- .github/
+|   |-- workflows/ci.yml           # Validate, lint and scan both stacks; plan stage 1
+|   `-- dependabot.yml             # GitHub Actions and Terraform provider/module updates
+|-- docs/adr/                      # Architecture decision records 0001 to 0003
+|-- kubernetes/
+|   |-- argocd-apps/               # root-app.yaml, the App of Apps root (applied by hand)
+|   |-- tests/                     # netpol-test.yaml: throwaway clients for the network policy demo (not synced)
+|   `-- workloads/                 # Synced by Argo CD
+|       |-- karpenter-nodepool.yaml  # Karpenter NodePool and EC2NodeClass
+|       `-- sample-app/            # Placeholder workload (stock nginx page, no Ingress) used to test Pod Security admission and network policy
 |-- modules/
-|   |-- vpc/                       # Network topology and discovery tags
+|   |-- vpc/                       # Network topology, NACLs, flow logs and discovery tags
 |   |-- eks_cluster/               # Control plane, OIDC, and System Node Group
-|   |-- eks_addons/                # IAM roles, SQS, Pod Identity (stage 1)
+|   |-- eks_addons/                # IAM roles, SQS, Pod Identity, managed add-ons (stage 1)
 |   |-- stage2_runner/             # SSM-only EC2 that runs stage 2 against the private endpoint (stage 1)
 |   |-- eks_addons_helm/           # AWS Load Balancer Controller and Karpenter via Helm (stage 2)
-|   `-- gitops_argocd/             # ArgoCD Operator bootstrap via Helm (stage 2)
+|   `-- gitops_argocd/             # Argo CD via Helm (stage 2)
+|-- scripts/
+|   |-- ci/                        # check-karpenter-names.sh, run by CI
+|   |-- teardown/                  # teardown-stage2.sh (runner) and check-leftovers.ps1 (workstation)
+|   `-- review.ps1, ship.ps1, land.ps1   # Operator pull request flow, see scripts/README.md
 |-- stacks/
-|   |-- infra/                     # Stage 1: vpc, eks_cluster, eks_addons (state: terraform.tfstate)
-|   `-- cluster/                   # Stage 2: Helm releases and ArgoCD (state: cluster.tfstate)
-|-- kubernetes/
-|   |-- argocd-apps/               # Root application controller
-|   `-- workloads/                 # Karpenter NodePools and dynamic deployments
-`-- docs/adr/                      # Architecture decision records
+|   |-- infra/                     # Stage 1: vpc, eks_cluster, eks_addons, stage2_runner (state: terraform.tfstate)
+|   `-- cluster/                   # Stage 2: Helm releases and Argo CD (state: cluster.tfstate)
+|-- CLAUDE.md                      # Working rules for Claude Code in this repository
+|-- LICENSE                        # MIT
+`-- SECURITY.md                    # How to report a problem
 ```
 
 Design decisions: [ADR 0001: private EKS endpoint and two-stage split](docs/adr/0001-private-eks-endpoint.md), [ADR 0002: stage 2 access path](docs/adr/0002-stage2-access-path.md), [ADR 0003: operator credentials](docs/adr/0003-operator-credentials.md).
@@ -217,7 +272,7 @@ The API endpoint is private-only, so run these on the stage 2 runner (see ADR 00
 
 ## Safe Teardown Protocol (Cost Prevention)
 
-Destroying a GitOps cluster strictly requires draining dynamic resources prior to invoking Terraform. Failure to do so will result in orphaned EC2 Spot instances and deadlocked VPC dependencies.
+Destroying a GitOps cluster strictly requires draining dynamic resources prior to invoking Terraform. Failure to do so will result in orphaned EC2 instances and deadlocked VPC dependencies.
 
 Teardown is the reverse of the apply order: cluster stack (stage 2) first, then infra. Steps 1 to 5 need the private endpoint, so start the stage 2 runner and run them there (see ADR 0002). Steps 6 and 7 run from your workstation: step 7 also destroys the runner.
 
@@ -273,6 +328,14 @@ Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on t
    ```
 
 > PowerShell note: quote the flag, for example `"-out=destroy.tfplan"`. A stale plan must be re-planned and applied immediately.
+
+## How this repository is worked on
+
+`CLAUDE.md` and `.claude/` are tracked on purpose. They hold the rules for AI-assisted work in this repository and a PreToolUse hook (`.claude/hooks/block-writes.ps1`) that blocks mutating commands and any AWS profile other than `readonly` for Claude Code. The operator runs every apply, destroy and push. The hook is a guardrail, not a sandbox: its limits are in the "Addendum 2026-10-12: enforcement" section of [ADR 0003](docs/adr/0003-operator-credentials.md).
+
+## Author
+
+Juan E. ([Adonitologist](https://github.com/Adonitologist)).
 
 ## License
 
