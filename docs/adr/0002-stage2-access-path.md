@@ -346,3 +346,7 @@ Reported by the operator from the live test of 2026-10-11 (raw terminal output i
 The `user_data` fix from PR #39 (`gnupg2` with `--allowerasing`) worked end to end on a newly created runner: the bootstrap log shows `gnupg2` installed, `gnupg2-minimal` removed, the Terraform and kubectl checksums OK and the ready file present. This closes the "Not verified: the fixed `user_data` end to end on a recreated runner" line of the 2026-10-11 addendum and the "still not tested" sentence of its results addendum.
 
 Stage 2 ran on this runner (4 resources created, 4 destroyed). The stage 1 destroy then needed two manual deletions (orphan VPC CNI ENI, EKS-created cluster security group); see ADR 0001, "Addendum 2026-10-12".
+
+## Addendum 2026-10-12: operator profile
+
+Delta against the "Addendum 2026-10-04: plan profiles" above: the operator profile `default` (IAM user terraform-developer) no longer holds administrator permissions. The operator now plans, applies and destroys stage 1 from the workstation with profile `tf-admin-tf` (assumed operator role, MFA, 1 hour session); `-lock=false` stays reserved for the `readonly` profile. See ADR 0003.

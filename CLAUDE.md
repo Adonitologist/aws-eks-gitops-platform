@@ -34,7 +34,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 - The stage 2 runner is stopped when idle; start it before use (`aws ec2 start-instances`). Teardown also runs on it (stage 2 destroyed first, then stage 1 from the workstation). Because of `depends_on` on the module call, its data sources are read at apply time, so a stage 1 plan shows its AMI and policy as known after apply. Recreate it with `-replace=module.stage2_runner.aws_instance.runner` to refresh the AMI.
 - Trivy findings from upstream modules are silenced with `#trivy:ignore:<ID>` lines (AVD-AWS-xxxx IDs) directly above the `module` line (see `modules/vpc/main.tf`, `modules/eks_cluster/main.tf`); justifications go above them.
 - `modules/eks_cluster` takes `cluster_version` (default "1.35", one minor behind the latest, standard support until 2027-03-27; the Argo CD and LB controller chart bumps were the last blocker, so apply only after that PR is merged; remaining are the verify-after-first-apply items in the ADR) and `system_node_*` from variables. The README Terraform badge is stale (v1.5+).
-- Backend bucket is hardcoded in `stacks/infra/backend.tf` and `stacks/cluster/backend.tf` (S3 only, `use_lockfile = true`, no DynamoDB; needs Terraform >= 1.10 and CI pins 1.15.6 at `ci.yml` lines 24 and 62). The CI role needs write/delete on the `.tflock` object next to the state key. Local AWS profiles: `default` (IAM user terraform-developer) is used by the operator, whose plans use the normal state lock; `readonly` (assumed role claude-readonly, used by the cc alias and by Claude Code) is not expected to write the `.tflock` object, so plans run with it pass `-lock=false`. Changing the backend may need `terraform init -reconfigure`.
+- Backend bucket is hardcoded in `stacks/infra/backend.tf` and `stacks/cluster/backend.tf` (S3 only, `use_lockfile = true`, no DynamoDB; needs Terraform >= 1.10 and CI pins 1.15.6 at `ci.yml` lines 24 and 62). The CI role needs write/delete on the `.tflock` object next to the state key. Local AWS profiles: the operator uses `tf-admin-tf` (assumed operator role with MFA, 1 hour session, see ADR 0003; the `default` profile only holds the key that assumes roles), whose plans use the normal state lock; `readonly` (assumed role claude-readonly, used by the cc alias and by Claude Code) is not expected to write the `.tflock` object, so plans run with it pass `-lock=false`. Changing the backend may need `terraform init -reconfigure`.
 - English only: comments, variable and output descriptions, error messages, YAML comments and docs are all in English.
 - `contexto_*.txt` / `estado_repositorio.txt` in the root are scratch dumps (git-ignored), not part of the project.
 - Dependabot (`.github/dependabot.yml`) covers only GitHub Actions and Terraform providers/registry modules. It does NOT cover the Terraform CLI, the EKS version and add-ons, Helm chart versions, tflint/Trivy versions or the runner pins (Terraform/kubectl SHA256); those stay manual. The operator runs a local plan (profile `readonly`, `-lock=false`) before merging Terraform bumps. The `ignore` block in `dependabot.yml` had no effect for Terraform requirement updates (verified 2026-10-11 with `@dependabot show <dep> ignore conditions`: the config row was empty); it is kept but ineffective. Major bumps are discarded by commenting `@dependabot ignore this major version` on the PR, which stores a server-side condition (currently stored for hashicorp/aws, hashicorp/helm, hashicorp/kubernetes, terraform-aws-modules/eks/aws, terraform-aws-modules/iam/aws; vpc not yet seen).
@@ -42,7 +42,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 
 ## Output limits
 - Plans run by Claude Code (profile `readonly`) always: terraform plan -lock=false -no-color -compact-warnings 2>&1 | tail -n 40
-- Operator plans (profile `default`) use the normal lock: terraform plan -no-color -compact-warnings 2>&1 | tail -n 40
+- Operator plans (profile `tf-admin-tf`) use the normal lock: terraform plan -no-color -compact-warnings 2>&1 | tail -n 40
 - Never read full plan output or full debug logs; use tail/grep.
 
 ## Working rules
@@ -51,7 +51,7 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 - A PreToolUse hook (`.claude/hooks/block-writes.ps1`) blocks mutating commands in any spelling (full paths, `bash -c`); extend its `$rules` table when adding a tool. It is a backstop, not a boundary: the read-only IAM role is the real guard.
 - Label every claim VERIFIED (raw output or file:line) or NOT VERIFIED. Never say done or perfect unless output shown proves it.
 - Never print the AWS account id or role ARNs; mask them in reports and diffs.
-- Plans: profile `readonly` with `-lock=false`, see Output limits.
+- Plans: profile `readonly` with `-lock=false`, see Output limits. Claude Code uses only the `readonly` profile and never `tf-admin`, `tf-admin-tf` or `default`.
 - Stage by explicit path only. Never commit `stacks/infra/tfplan` or untracked files.
 - If `git diff --stat` shows a whole-file change, stop and report (`.gitattributes` enforces LF).
 - One concern per PR. When `.tf` changes, report raw output and exit codes for fmt, validate, tflint and a local plan; Trivy runs in CI.
