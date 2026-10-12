@@ -3,3 +3,7 @@ misconfigurations:
     paths:
       - "kubernetes/workloads/sample-app/deployment.yaml"
     statement: Official nginxinc image, pinned by sha256 digest.
+  - id: AVD-KSV-0125
+    paths:
+      - "kubernetes/tests/netpol-test.yaml"
+    statement: Official Docker Hub busybox image, pinned by sha256 digest; throwaway network policy test pods.

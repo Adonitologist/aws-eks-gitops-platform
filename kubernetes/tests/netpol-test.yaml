@@ -1,0 +1,101 @@
+# Network policy verification for the live test. NOT synced by Argo CD: this folder is outside
+# kubernetes/workloads. The operator applies it by hand on the runner and deletes it afterwards
+# (README, Post-Deploy Checklist). Both clients are Deployments because standalone pods may not
+# be enforced reliably by the VPC CNI network policy agent.
+#
+# np-allow runs in sample-app (policies there allow same-namespace traffic) and must reach the app.
+# np-deny runs in np-test (no policy allows it into sample-app) and must time out.
+# Both comply with Pod Security Admission "restricted" (sample-app enforces it).
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: np-test
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: np-allow
+  namespace: sample-app
+  labels:
+    app.kubernetes.io/name: np-allow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: np-allow
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: np-allow
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10101
+        runAsGroup: 10101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: busybox
+          # Index digest of the busybox 1.36 tag, looked up in the Docker Hub registry on 2026-10-12.
+          image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          command: ["sleep", "3600"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+              ephemeral-storage: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+              ephemeral-storage: 16Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: np-deny
+  namespace: np-test
+  labels:
+    app.kubernetes.io/name: np-deny
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: np-deny
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: np-deny
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10101
+        runAsGroup: 10101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: busybox
+          # Same image and digest as np-allow.
+          image: busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+          command: ["sleep", "3600"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 8Mi
+              ephemeral-storage: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+              ephemeral-storage: 16Mi

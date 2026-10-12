@@ -19,6 +19,12 @@ variable "vpc_cni_version" {
   }
 }
 
+variable "vpc_cni_enable_network_policy" {
+  description = "Enable Kubernetes network policy enforcement in the vpc-cni managed add-on (configuration value enableNetworkPolicy)"
+  type        = bool
+  default     = true
+}
+
 variable "coredns_version" {
   description = "Managed add-on version for coredns (must be compatible with the cluster Kubernetes version; default is the EKS 1.35 default version)"
   type        = string
