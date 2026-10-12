@@ -176,13 +176,15 @@ The rule "Claude Code uses only the `readonly` profile" (CLAUDE.md) was a conven
 
 - The operator's `cc` command (checked with `(Get-Command cc).Definition`, 2026-10-12) sets `AWS_PROFILE` to `readonly` for the Claude Code process and removes the variable when Claude Code exits. This is why the inherited-profile check passes for normal sessions.
 - A test script kept outside the repo (`hook-guard-test.ps1`) pipes sample PreToolUse JSON into the hook and checks the exit code: 43 cases, all as expected (existing rules still block; each new rule blocks its samples; `readonly` calls, `terraform plan -lock=false`, `git status` and `ls .aws-sam` pass). This verifies the hook text matching only. It runs no AWS call and does not show what Claude Code does at runtime.
+- Runtime check on 2026-10-12, with Claude Code started through the `cc` command on the branch `ci/hook-profile-guard`, reported by Claude Code and the operator (raw output not stored):
+  - `aws sts get-caller-identity --profile tf-admin` was refused by the hook before running, with the message "Blocked by block-writes hook (aws profile other than readonly)".
+  - Reading `~/.aws/config` with the Read tool was refused by the deny rule ("File is in a directory that is denied by your permission settings"). For the Read tool this also shows that `~` expands to the user profile directory on this Windows machine.
+  - `aws sts get-caller-identity --profile readonly` ran and returned the read-only role.
 
 ### Not verified
 
-- That `~/` in `Read(~/.aws/**)` expands to the user profile directory on Windows.
 - That the deny rules apply to PowerShell cmdlets (`Get-Content`, `gc`, `Select-String`); the Claude Code docs name `cat`, `head`, `tail`, `sed` and `tee`. The hook rule on the `.aws` text covers cmdlets in Bash and PowerShell command lines either way.
 - That the PowerShell tool passes its text in `tool_input.command` (the hook reads only that field).
-- Operator check to run: ask Claude Code to read `~/.aws/config` and confirm the deny rule blocks it.
 
 ### Limits (not a sandbox)
 
