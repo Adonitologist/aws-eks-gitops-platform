@@ -1,6 +1,6 @@
 # Enterprise AWS EKS GitOps Platform
 
-![Terraform CI](https://github.com/Adonitologist/aws-eks-gitops-platform/actions/workflows/ci.yml/badge.svg)
+[![Terraform CI](https://github.com/Adonitologist/aws-eks-gitops-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Adonitologist/aws-eks-gitops-platform/actions/workflows/ci.yml)
 ![Terraform](https://img.shields.io/badge/IaC-Terraform_v1.15.6-844FBA?logo=terraform)
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.35-326CE5?logo=kubernetes)
 ![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-EF7B4D?logo=argo)
