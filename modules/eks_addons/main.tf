@@ -101,6 +101,11 @@ resource "aws_eks_addon" "managed" {
   addon_name    = each.key
   addon_version = each.value
 
+  # Only vpc-cni takes configuration here; null leaves the other add-ons at their defaults.
+  configuration_values = each.key == "vpc-cni" ? jsonencode({
+    enableNetworkPolicy = tostring(var.vpc_cni_enable_network_policy)
+  }) : null
+
   # The cluster bootstraps self-managed vpc-cni, kube-proxy and CoreDNS by default
   # (bootstrap_self_managed_addons is left unset), so adopting them as managed add-ons needs
   # OVERWRITE on create; with NONE the create fails on field conflicts. OVERWRITE on update

@@ -153,6 +153,12 @@ Reported by the operator from the live test of 2026-10-11 (apply 19:41 local to 
 - Stage 1 destroy failed twice, both fixed by hand: (1) `DeleteSecurityGroup` `DependencyViolation` from an orphan VPC CNI ENI (status `available`, tags `eks:eni:owner=amazon-vpc-cni`, cluster name and the instance id of the terminated Karpenter node); (2) `DeleteVpc` `DependencyViolation` from the EKS-created cluster security group `eks-cluster-sg-<cluster>-<n>`, which is not in Terraform. The destroy then completed (1 resource). Afterwards no EKS, EC2, NAT, load balancer, volume, IAM role, SSM document, SQS queue or KMS alias of the cluster remained. Mitigation: PR #60 (`scripts/teardown/check-leftovers.ps1`, README Safe Teardown step 6).
 - Cost: see the README "Cost" day total; it is account-wide for 2026-10-11 UTC and is not attributed to this test alone.
 
+## Addendum 2026-10-12: network policy
+
+Added, nothing verified yet (the next live test is the first run): `enableNetworkPolicy = true` on the `vpc-cni` managed add-on (variable `vpc_cni_enable_network_policy`, default true, `modules/eks_addons`); `kubernetes/workloads/sample-app/networkpolicy.yaml` (default deny plus DNS and same-namespace exceptions); and `kubernetes/tests/netpol-test.yaml` (two throwaway clients, not synced by Argo CD). The README Post-Deploy Checklist has the demonstration.
+
+Rendered with `helm template`, the Argo CD chart 10.9.6 policies (enabled by default since chart 10.0.0) are Ingress-only and none denies by default, and the Karpenter and AWS Load Balancer Controller charts create none. The one open risk: kubelet probes to pods that a policy selects (repo-server and the application controller probe the `metrics` port) come from the node IP, which no policy rule names; whether the VPC CNI agent always allows node traffic is not documented in the pages read. Fallback: `global.networkPolicy.create = false` in `modules/gitops_argocd/main.tf`, or `vpc_cni_enable_network_policy = false`. Also not verified: whether the managed CoreDNS add-on ships a policy, the AL2023 kernel number, the agent's CPU and memory requests, and the plan behavior of a `configuration_values` change on a live cluster.
+
 ## Addendum 2026-10-12: Karpenter names and Kustomize
 
 Delta against the row "Hardcoded Karpenter node role name" (follow-up: Kustomize overlay or patch). Kustomize for the Karpenter names was evaluated and deliberately not done. Reasons:

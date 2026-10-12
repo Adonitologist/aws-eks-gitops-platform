@@ -199,6 +199,21 @@ The API endpoint is private-only, so run these on the stage 2 runner (see ADR 00
 2. Image pulls work (private subnets reach the internet only on TCP 443 through the NAT): `kubectl get pods -A` shows no `ImagePullBackOff` or `ErrImagePull`.
 3. CoreDNS is resolving: `kubectl -n kube-system get pods -l k8s-app=kube-dns` are `Running`, and `kubectl run dns-test --rm -it --restart=Never --image=busybox:1.36 -- nslookup kubernetes.default` returns an answer.
 4. Flow logs are flowing: the CloudWatch log group for `vpc-eks-gitops-<environment>` receives events.
+5. Network policy enforcement (NOT VERIFIED until the live test): the vpc-cni add-on has `enableNetworkPolicy = true` (`vpc_cni_enable_network_policy`, default true) and `kubernetes/workloads/sample-app/networkpolicy.yaml` denies all traffic in `sample-app` except DNS and same-namespace pods. First check that probes still pass: `kubectl -n argocd get pods` and `kubectl -n sample-app get pods` must show every pod `Running` and ready (expected). If Argo CD pods stay not ready, the fallback is `global.networkPolicy.create = false` in `modules/gitops_argocd/main.tf` (or `vpc_cni_enable_network_policy = false`); see ADR 0001, "Addendum 2026-10-12: network policy".
+6. Network policy demonstration (apply from the repo on the runner; `kubernetes/tests/` is not synced by Argo CD):
+   ```bash
+   kubectl apply -f kubernetes/tests/netpol-test.yaml
+   kubectl -n sample-app rollout status deploy/np-allow
+   kubectl -n np-test rollout status deploy/np-deny
+   kubectl -n sample-app get networkpolicy                # 3 policies: default-deny-all, allow-dns-egress, allow-same-namespace
+   kubectl get policyendpoints -A                         # objects created by EKS for the policies
+   kubectl -n kube-system get networkpolicy               # expected: none (NOT VERIFIED for the managed CoreDNS add-on)
+   kubectl -n sample-app exec deploy/np-allow -- wget -qO- -T 3 http://sample-app.sample-app.svc.cluster.local   # expected: nginx page
+   kubectl -n np-test exec deploy/np-deny -- wget -qO- -T 3 http://sample-app.sample-app.svc.cluster.local       # expected: timeout
+   kubectl -n sample-app exec deploy/np-allow -- wget -qO- -T 3 http://example.com                               # expected: timeout (egress denied)
+   kubectl -n sample-app exec deploy/np-allow -- nslookup sample-app.sample-app.svc.cluster.local                # expected: resolves (DNS allowed)
+   ```
+   Cleanup: `kubectl delete -f kubernetes/tests/netpol-test.yaml`.
 
 ## Safe Teardown Protocol (Cost Prevention)
 

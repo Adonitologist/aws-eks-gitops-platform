@@ -1,0 +1,58 @@
+---
+# Default deny for every pod in the namespace, ingress and egress. Everything below is an
+# explicit exception. Enforced only while the vpc-cni add-on has enableNetworkPolicy = true.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: sample-app
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Name resolution: pods may query CoreDNS (kube-dns) in kube-system on port 53.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: sample-app
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Pods of this namespace may talk to each other, and to nothing else. No ports are listed on
+# purpose: the Service maps port 80 to container port 8080, and AWS documents that the Service
+# port must equal the container port for network policy. Egress is needed so the in-namespace
+# test client can reach the app under default-deny egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: sample-app
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - to:
+        - podSelector: {}
