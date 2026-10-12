@@ -168,3 +168,38 @@ Delta against the row "Hardcoded Karpenter node role name" (follow-up: Kustomize
 - Only one environment exists (`production`, the default and the value CI plans with), so there is nothing to vary.
 
 Instead, `scripts/ci/check-karpenter-names.sh` now also requires exactly one NodePool and one EC2NodeClass and that the NodePool `nodeClassRef.name` equals the EC2NodeClass `metadata.name`. The check still validates only the default environment. Not verified: behavior of a `kustomization.yaml` under `directory.recurse: true`, and Kustomize `replacements` for this layout (evaluation, not tested).
+
+## Addendum 2026-10-12: live test 3 results
+
+Reported by the operator from the live test of 2026-10-12 (cluster `us-east-1`, EKS 1.35.8, Argo CD v3.5.3 / chart 10.9.6, Karpenter 1.14.1); raw terminal output is not stored in the repo. Earlier addenda are unchanged. This one supersedes the "nothing verified yet" statement of the "network policy" addendum and the "NOT VERIFIED live" statements about the leftover-check filters and the final Karpenter wait loop, except where noted below.
+
+Timeline (Europe/Madrid local time, "about" = derived from resource timestamps):
+
+- Stage 1 apply started 14:31 and finished about 14:52 (about 20 min, 117 added). Stage 2 apply about 1 min (Argo CD release 45 s, 4 added). Root application created and first synced 15:07. Karpenter probe 15:15. Teardown scripts 15:23 to 15:37.
+- Stage 2 destroy: 4 destroyed in about 10 s; the `argocd` namespace did not hang. Helm kept the three Argo CD CRDs by resource policy (expected).
+- Stage 1 destroy 15:42 to about 15:52: 117 destroyed, NAT gateway destroy 1 min 2 s, no manual intervention. Whole test about 1 h 25 min.
+- The apply used the first MFA session and the destroy a fresh one (cache cleared). A Terraform run longer than 1 hour was not exercised (longest run about 20 min).
+
+VERIFIED:
+
+- Network policy enforcement: `aws-node` pods 2/2; policyendpoints existed for the 6 Argo CD policies and the 3 sample-app policies. From the same namespace nginx answered; from another namespace `wget` timed out; egress to the internet timed out; DNS from `sample-app` was allowed. All 7 Argo CD pods and the sample app stayed 1/1 Running with 0 restarts after more than 4 minutes under the policies, so the kubelet probe fallback was not needed. `kube-system` has no NetworkPolicy (the managed CoreDNS add-on adds none).
+- Karpenter node: Amazon Linux 2023.12.20260928, kernel 6.12.110-135.201.amzn2023 (5.10 or later), containerd 2.2.7, `c7i-flex.large` on-demand, NodeClaim to Ready in 37 s. The pinned `busybox:1.36` digest pulled fine.
+- Instance tags (keys only). Runner: `Environment`, `Component`, `Name`. Managed node group nodes: `karpenter.sh/discovery`, `eks:cluster-name`, `aws:eks:cluster-name`, `eks:nodegroup-name`, `kubernetes.io/cluster/<cluster>`, `Name` and `aws:*` keys; no `karpenter.sh/nodepool`. Karpenter node: `karpenter.sh/nodepool`, `karpenter.sh/nodeclaim`, `karpenter.k8s.aws/ec2nodeclass`, `eks:eks-cluster-name`, `aws:eks:cluster-name`, `kubernetes.io/cluster/<cluster>`, `ManagedBy`, `Intent`, `Name`; no `karpenter.sh/discovery`. The NAT gateway and its Elastic IP both have `Name = vpc-<cluster>-us-east-1a`. The VPC flow log group `/aws/vpc-flow-log/<vpc id>` is destroyed with stage 1. The tags and names used by the filters of `check-leftovers.ps1` (PR #69) were therefore observed live.
+- Leftover gate: baseline `-AfterDestroy` before the test printed OK. With the Karpenter node alive it exited 1 with LEFT for the load balancer and the Karpenter instance. After the drain it exited 1 with LEFT for an orphan VPC CNI ENI (status `available`, no attachment, owner instance already terminated), the same finding as live test 2; it was deleted by hand with the operator profile and the re-run before stage 1 printed OK. `-AfterDestroy` after stage 1 printed OK. Independent read-only checks afterwards (EKS clusters, instances, NAT gateways, Elastic IPs, VPC, load balancers, SQS queue, IAM roles, log groups) were all empty for this cluster, and the runner SSM session log group is gone too. Resources of another project were not touched.
+- `teardown-stage2.sh`, real script: the stub test of the wait loop (no cluster effect) passed before the kubeconfig existed. Timeout path with `NODE_TIMEOUT=30`: ALB gone in 20 s, root application deleted in 36 s, FAIL after 30 s with exit 1. Success run: with the label `karpenter.sh/nodepool=loop-test` on a managed node, waiting lines from 15:36:33, label removed by a background timer about 36 s later, "no Karpenter nodeclaims and nodes left" 49 s after the first waiting line, exit 0. An earlier run waited for real for more than 9 minutes polling every 16 s and was interrupted by the operator with Ctrl-C (not counted as the success run). The real Karpenter node was again removed by the root-application cascade before the loop started.
+- Argo CD: login page and UI answered 200 over HTTP through the ALB from the allowed IP; the initial admin secret exists with chart 10.9.6. The only application is `root-application` (8 resources: namespace, service, deployment, EC2NodeClass, NodePool and 3 NetworkPolicies, shown with their policyendpoints and, while it lasted, the NodeClaim and node). No HTTPS (documented limitation). The password was printed in an SSM session logged to CloudWatch; that log group was destroyed with stage 1 and is gone.
+- Budget: a daily USD 5 alert-only test budget was created with the CLI call shape of the runbook (no error) and deleted afterwards; deletion needed the operator profile (the read-only role is denied `budgets:ModifyBudget`, expected). Another budget of the account was left untouched.
+
+Finding: in a pod, `nslookup kubernetes.default` returned NXDOMAIN from the cluster DNS (the server answered), while `nslookup kubernetes.default.svc.cluster.local` resolved. Probable cause: busybox `nslookup` does not use the search domains (not verified). The README Post-Deploy Checklist now uses the full name.
+
+Process: pass the operator profile per command with `--profile` instead of leaving it set in a terminal window.
+
+NOT VERIFIED:
+
+- The `network-policy-agent` CPU and memory requests.
+- Whether the `vpc-cni` `configuration_values` change replaces the add-on on an already running cluster (this test used a fresh cluster).
+- A Terraform run longer than 1 hour.
+- The state of the labelled node while the `teardown-stage2.sh` wait loop waited (not captured).
+- Rejection of the ALB from a non-allowed network: from a phone on mobile data the ALB did not answer (timeout), observed by the operator, not independently verified.
+- Cost: Cost Explorer for 2026-10-12 will be added in a later PR.
+- Positive detection of the `-AfterDestroy` branch of `check-leftovers.ps1` (runner, managed nodes, NAT gateway, Elastic IP, VPC): it was only run when everything was already gone (negative case, OK). The default-mode instance filter was exercised positively (Karpenter node).
