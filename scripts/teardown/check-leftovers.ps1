@@ -2,14 +2,25 @@
 # Read-only: aws describe/list calls only. Prints ids and names, never account ids or ARNs.
 # Exit 0 = nothing left; exit 1 = leftovers found or a query failed (do not continue).
 #
-# Default (before `terraform destroy` in stacks/infra): the cluster, its cluster security group and the
-# in-use ENIs of the managed nodes are expected, so only ENIs in status "available" (orphans) and
-# load balancers are reported.
+# Default (before `terraform destroy` in stacks/infra): the cluster, its cluster security group, the
+# in-use ENIs of the managed nodes, the managed nodes, the runner and the NAT gateway are expected,
+# so only these are reported: ENIs in status "available" (orphans), load balancers, and instances in
+# the cluster VPC that carry the tag key karpenter.sh/nodepool (Karpenter nodes). If the VPC is not
+# found a NOTE line is printed and the instance check is skipped (not a failure).
 # -AfterDestroy (after stage 1 is destroyed): the cluster, any ENI tagged for it, its cluster security
-# group and load balancers must all be gone.
+# group, load balancers, instances (runner, managed nodes, Karpenter nodes), NAT gateways, Elastic IPs
+# and the VPC must all be gone.
 #
-# Not checked: NAT gateways and EC2 instances. Nothing in this repo's Terraform tags them with the
-# cluster name, so there is no verified filter for them.
+# Filter basis. Repo code (terraform-aws-modules vpc 5.21.0 and eks 20.37.2, this repo's modules):
+#   VPC, NAT gateway and Elastic IP carry Name = vpc-<cluster> / vpc-<cluster>-<az>
+#   (modules/vpc/main.tf, vpc module main.tf); the runner carries Name = <cluster>-stage2-runner
+#   (modules/stage2_runner/main.tf); managed node group instances carry karpenter.sh/discovery =
+#   <cluster> through the launch template tag_specifications (modules/eks_cluster/main.tf tags).
+# Karpenter docs (https://karpenter.sh/docs/concepts/nodeclasses/, "spec.tags"): instances carry
+#   karpenter.sh/nodepool and eks:eks-cluster-name = <cluster>.
+# NOT VERIFIED live until the live test: the Karpenter tags with controller 1.14.1, the tags EKS adds
+# to managed node group instances, and the exact Name values of the NAT gateway and Elastic IP.
+# "terminated" instances and "deleted" NAT gateways stay listed for a while and are excluded by state.
 #
 # Usage: .\scripts\teardown\check-leftovers.ps1 [-ClusterName <name>] [-Region <region>] [-AfterDestroy]
 # Uses the active AWS profile (AWS_PROFILE).
@@ -48,7 +59,44 @@ try {
     '--query', 'ResourceTagMappingList[].ResourceARN')
   Add-Finding 'load balancers tagged for the cluster' @($arns | ForEach-Object { ($_ -split 'loadbalancer/')[-1] })
 
+  # Instance states that still hold or may resume resources.
+  $liveStates = 'pending,running,stopping,stopped'
+  $vpcName = "vpc-$ClusterName"
+  $vpcIds = Invoke-Aws @('ec2', 'describe-vpcs', '--filters', "Name=tag:Name,Values=$vpcName", '--query', 'Vpcs[].VpcId')
+
+  if (-not $AfterDestroy) {
+    if ($vpcIds.Count -eq 0) {
+      Write-Host "NOTE: VPC $vpcName not found; Karpenter instance check skipped."
+    }
+    else {
+      # Karpenter nodes: tag key karpenter.sh/nodepool (Karpenter docs). Managed nodes and the runner
+      # do not carry it, so they are not reported here.
+      Add-Finding 'Karpenter instances in the VPC' (Invoke-Aws @('ec2', 'describe-instances',
+        '--filters', "Name=vpc-id,Values=$($vpcIds -join ',')", 'Name=tag-key,Values=karpenter.sh/nodepool',
+        "Name=instance-state-name,Values=$liveStates",
+        '--query', 'Reservations[].Instances[].InstanceId'))
+    }
+  }
+
   if ($AfterDestroy) {
+    # Separate calls, ORed here: describe-instances ANDs its filters. Basis in the header comment.
+    $instanceIds = @()
+    foreach ($tagFilter in @("Name=tag:Name,Values=$ClusterName-stage2-runner",
+        "Name=tag:karpenter.sh/discovery,Values=$ClusterName",
+        "Name=tag:eks:eks-cluster-name,Values=$ClusterName")) {
+      $instanceIds += Invoke-Aws @('ec2', 'describe-instances', '--filters', $tagFilter,
+        "Name=instance-state-name,Values=$liveStates", '--query', 'Reservations[].Instances[].InstanceId')
+    }
+    Add-Finding 'instances of the cluster (runner, managed or Karpenter nodes)' @($instanceIds | Select-Object -Unique)
+
+    # Single NAT gateway named vpc-<cluster>-<az> (vpc module); "deleted" entries are excluded by state.
+    Add-Finding 'NAT gateways' (Invoke-Aws @('ec2', 'describe-nat-gateways',
+      '--filter', "Name=tag:Name,Values=$vpcName-*", 'Name=state,Values=pending,available,deleting',
+      '--query', 'NatGateways[].NatGatewayId'))
+    # NAT Elastic IP, same Name pattern (vpc module aws_eip.nat); an unattached address costs money.
+    Add-Finding 'Elastic IPs' (Invoke-Aws @('ec2', 'describe-addresses',
+      '--filters', "Name=tag:Name,Values=$vpcName-*", '--query', 'Addresses[].AllocationId'))
+    Add-Finding 'VPC' $vpcIds
     Add-Finding 'EKS cluster' (Invoke-Aws @('eks', 'list-clusters', '--query', "clusters[?@=='$ClusterName']"))
     # EKS-created, not managed by Terraform; left over when an orphan ENI still uses it.
     Add-Finding 'cluster security groups' (Invoke-Aws @('ec2', 'describe-security-groups',

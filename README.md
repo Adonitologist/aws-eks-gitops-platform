@@ -264,7 +264,7 @@ Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on t
    ```powershell
    .\scripts\teardown\check-leftovers.ps1
    ```
-   Do not run step 7 on exit 1. A Karpenter node that was removed can leave an orphan ENI (status `available`, no attachment) that blocks deletion of the security groups and the VPC. After confirming the instance is terminated, delete the listed ENI by hand and re-run the check. After step 7, `-AfterDestroy` confirms nothing is left; a remaining `eks-cluster-sg-*` security group is deleted by hand once no ENI uses it. NAT gateways and EC2 instances are not checked (no verified cluster tag).
+   Do not run step 7 on exit 1. A Karpenter node that was removed can leave an orphan ENI (status `available`, no attachment) that blocks deletion of the security groups and the VPC. After confirming the instance is terminated, delete the listed ENI by hand and re-run the check. The check also reports Karpenter instances still present in the cluster VPC (tag key `karpenter.sh/nodepool`; managed nodes and the runner are expected and not reported), and prints a NOTE line if the VPC is not found. After step 7, `-AfterDestroy` confirms nothing is left: instances (runner, managed or Karpenter nodes), NAT gateways, Elastic IPs and the VPC are checked too; a remaining `eks-cluster-sg-*` security group is deleted by hand once no ENI uses it. The tag filters come from the Terraform modules and the Karpenter docs and are NOT VERIFIED live until the next live test.
 
 7. **Destroy the infra stack (stage 1):**
    ```bash
