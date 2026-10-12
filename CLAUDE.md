@@ -75,3 +75,12 @@ Two stacks, separate S3 state in the same bucket (`terraform.tfstate` for infra,
 
 - GitHub OIDC uses immutable subject: sub = repo:Adonitologist@90419501/aws-eks-gitops-platform@1383441716:<ref|pull_request>. Trust policy must use these exact values with StringEquals, no wildcards.
 - CI role github-actions-terraform-role-jeh: ReadOnlyAccess + inline terraform-state-access (state read, .tflock read/write/delete). No admin. Re-check CI plan after the first apply.
+
+## Addendum 2026-10-12: live test 2
+
+Operator-reported from the live test of 2026-10-11; details in ADR 0001 and ADR 0002, "Addendum 2026-10-12".
+- The runner `user_data` fix from PR #39 is verified on a freshly created runner.
+- The sample app runs as uid/gid 10101 with a read-only root filesystem (verified live).
+- A Karpenter node became Ready in about 33 s (`c7i-flex.large`, on-demand).
+- Stage 1 destroy needed two manual deletions: an orphan VPC CNI ENI and the EKS-created `eks-cluster-sg-*` security group (not in Terraform). Mitigation: `scripts/teardown/check-leftovers.ps1` and README Safe Teardown step 6 (PR #60).
+- Not exercised: the final Karpenter wait loop of `teardown-stage2.sh` (it passed immediately because the root-app cascade had already removed the node).

@@ -92,11 +92,14 @@ Notes:
 
 ### Cost
 
-Reference table for the live test. The actual cost is not known yet.
+Reference table for the live test. The figures are Cost Explorer estimates, not an invoice.
 
 | Run | Duration and scope | Actual cost |
 |-----|--------------------|-------------|
-| Live test 2026-10-11 | about 1h10m, EKS + NAT + 2 system nodes + runner + up to 2 Karpenter nodes | TO BE FILLED from Billing |
+| Live test 2026-10-11 | about 1h10m, EKS + NAT + 2 system nodes + runner + up to 2 Karpenter nodes | see day total |
+| Live test 2, 2026-10-11 | about 1h50m, apply 19:41 local to destroy end 21:29 local, including fixes; 117 + 4 resources; EKS + NAT + 2 system nodes + runner + 1 live Karpenter node | see day total |
+
+Day total, not per run: Cost Explorer shows about USD 1.02 gross in Usage rows for 2026-10-11 UTC for the whole account, marked Estimated. It cannot be attributed to either live test without cost allocation tags, and Estimated data may still change. Of it, about USD 0.05 are Cost Explorer API calls. Covered 100% by AWS credits, net 0. Gross by service: EC2-Other 0.41, EC2-Compute 0.26, EKS 0.13, VPC 0.13, ELB 0.05. Data Transfer showed only a credit row (-0.038) with no Usage row, unexplained.
 
 Main hourly cost drivers, approximate AWS list prices (us-east-1, on-demand), NOT VERIFIED; check the AWS pricing pages and Billing before relying on them:
 
@@ -192,7 +195,7 @@ Destroying a GitOps cluster strictly requires draining dynamic resources prior t
 
 Teardown is the reverse of the apply order: cluster stack (stage 2) first, then infra. Steps 1 to 5 need the private endpoint, so start the stage 2 runner and run them there (see ADR 0002). Steps 6 and 7 run from your workstation: step 7 also destroys the runner.
 
-Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on the runner; `--dry-run` previews it; set `ARGOCD_ALLOWED_CIDRS` so it prints the step 5 command with your CIDR). It stops with a clear error on any timeout or failed query, and never runs `terraform destroy`. The ALB check needs `tag:GetResources` on the runner role (stage 1 must be applied with that policy). The manual commands below are the fallback. The script was run live on 2026-10-11: ingress deleted and no ALB left after about 31 s (not tested with live Karpenter nodes).
+Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on the runner; `--dry-run` previews it; set `ARGOCD_ALLOWED_CIDRS` so it prints the step 5 command with your CIDR). It stops with a clear error on any timeout or failed query, and never runs `terraform destroy`. The ALB check needs `tag:GetResources` on the runner role (stage 1 must be applied with that policy). The manual commands below are the fallback. The script was run live on 2026-10-11: in one run the ingress was deleted and no ALB was left after about 31 s; in the run with a live Karpenter node the ALB was gone in about 24 s and deleting the root application took about 35 s, and its cascade removed the NodePool, EC2NodeClass and the node. The script's final Karpenter wait loop passed immediately, so it was not exercised.
 
 1. **Delete the Argo CD ingress and the root application:**
    The Argo CD ALB ingress is created by the Helm release (stage 2), not by Argo CD, so deleting the root application does not remove it. Confirm the ingress name, then delete it so the AWS Load Balancer Controller dismantles its ALB. Then delete the root application, which removes the NodePool and EC2NodeClass it syncs from `kubernetes/workloads`.

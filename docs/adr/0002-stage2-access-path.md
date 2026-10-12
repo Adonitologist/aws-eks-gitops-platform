@@ -338,3 +338,11 @@ Not verified: the fixed `user_data` end to end on a recreated runner. The change
 ## Addendum 2026-10-11: live run results
 
 The live run of 2026-10-11 exercised the runner, the teardown script and `tag:GetResources` (all OK). Results table: ADR 0001, "Addendum 2026-10-11: live run results". The fixed `user_data` on a recreated runner is still not tested.
+
+## Addendum 2026-10-12: fresh runner
+
+Reported by the operator from the live test of 2026-10-11 (raw terminal output is not stored in the repo). Older addenda are unchanged.
+
+The `user_data` fix from PR #39 (`gnupg2` with `--allowerasing`) worked end to end on a newly created runner: the bootstrap log shows `gnupg2` installed, `gnupg2-minimal` removed, the Terraform and kubectl checksums OK and the ready file present. This closes the "Not verified: the fixed `user_data` end to end on a recreated runner" line of the 2026-10-11 addendum and the "still not tested" sentence of its results addendum.
+
+Stage 2 ran on this runner (4 resources created, 4 destroyed). The stage 1 destroy then needed two manual deletions (orphan VPC CNI ENI, EKS-created cluster security group); see ADR 0001, "Addendum 2026-10-12".
