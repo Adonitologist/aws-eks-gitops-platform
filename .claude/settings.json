@@ -50,7 +50,9 @@
       "Bash(rm -fr*)",
       "Bash(rm -r *)",
       "Read(./contexto_*.txt)",
-      "Read(./estado_repositorio.txt)"
+      "Read(./estado_repositorio.txt)",
+      "Read(~/.aws/**)",
+      "Edit(~/.aws/**)"
     ]
   },
   "hooks": {

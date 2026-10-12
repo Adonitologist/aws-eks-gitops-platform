@@ -1,7 +1,12 @@
 # PreToolUse backstop: blocks mutating git/gh/terraform/kubectl/helm/aws commands.
+# Also a credential guard: Claude Code may use only the "readonly" AWS profile. It blocks
+# --profile / AWS_PROFILE with any other value, "aws configure export-credentials|get|set|...",
+# any command text naming the ~/.aws directory (credentials, config, cli/cache, sso), and
+# aws/terraform commands when the inherited AWS_PROFILE is not "readonly".
 # Scans the whole command text, so wrappers (bash -c, env, full paths) are covered.
 # Fail-closed: any internal error exits 2 (only exit 2 blocks a PreToolUse hook).
-# Not a sandbox: variable indirection, encoded payloads and aliases get past it.
+# Not a sandbox: variable indirection, encoded payloads, scripts that read files themselves,
+# env dumps and aliases get past it; the Read/Edit deny rules in settings.json cover the file tools.
 $ErrorActionPreference = 'Stop'
 trap { [Console]::Error.WriteLine("block-writes hook error, blocking: $_"); exit 2 }
 
@@ -32,6 +37,19 @@ $rules = [ordered]@{
   'aws s3 write'                   = "$(P aws)$gap${w}s3 $gap${w}(cp|mv|rm|rb|mb|sync)$e"
   'operator scripts (push/merge)'  = "${w}(ship|land)\.ps1"
   'operator scripts (teardown)'    = "(?:(?:^|[;&|(]) ?(?:\w+=\S* )*|$(P '(?:ba|z|da|k)?sh')$gap|$(P source)$gap)(?:[^\s;&|()]*/)?teardown-stage2\.sh$e"
+  # Credential guard: only the readonly profile; never operator profiles or credential files.
+  'aws profile other than readonly' = "${w}--profile(?:=|\s+)(?!readonly$e)\S"
+  'AWS_PROFILE not readonly'       = "AWS_(?:DEFAULT_)?PROFILE$e(?!\s*[=,]?\s*readonly$e)"
+  'aws configure secrets'          = "$(P aws)$gap${w}configure $gap${w}(export-credentials|get|set|import|sso)$e"
+  # Single quotes on purpose: the literal $ is the regex end anchor, not a PowerShell variable.
+  'aws credentials directory'      = '(?<![\w.-])\.aws(?:/|$|[\s;&|)])|AWS_SHARED_CREDENTIALS_FILE|AWS_CONFIG_FILE'
+}
+
+# Inherited environment: Claude Code started with a non-readonly profile exported. The command
+# text shows nothing in that case, so check this process environment (a child of Claude Code).
+if ($env:AWS_PROFILE -and $env:AWS_PROFILE -ne 'readonly' -and $t -match "$(P aws)|$(P terraform)") {
+  [Console]::Error.WriteLine("Blocked by block-writes hook (inherited AWS_PROFILE is not readonly). The operator runs this command, not Claude Code.")
+  exit 2
 }
 
 foreach ($name in $rules.Keys) {

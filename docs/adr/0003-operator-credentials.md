@@ -164,3 +164,32 @@ the repo.
 
 - Least-privilege policy for the operator role (separate project).
 - Revisit Identity Center if the account joins an organization.
+
+## Addendum 2026-10-12: enforcement
+
+The rule "Claude Code uses only the `readonly` profile" (CLAUDE.md) was a convention. It is now enforced in two layers:
+
+- `.claude/hooks/block-writes.ps1` (PreToolUse, Bash and PowerShell) blocks: `--profile` with any value other than `readonly`; `AWS_PROFILE` or `AWS_DEFAULT_PROFILE` set to anything other than `readonly`; `aws configure export-credentials|get|set|import|sso`; any command text naming the `.aws` directory (or `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE`); and `aws` or `terraform` commands when the inherited `AWS_PROFILE` of Claude Code is not `readonly`.
+- `.claude/settings.json` deny rules `Read(~/.aws/**)` and `Edit(~/.aws/**)` for the built-in file tools.
+
+### Verified
+
+- The operator's `cc` command (checked with `(Get-Command cc).Definition`, 2026-10-12) sets `AWS_PROFILE` to `readonly` for the Claude Code process and removes the variable when Claude Code exits. This is why the inherited-profile check passes for normal sessions.
+- A test script kept outside the repo (`hook-guard-test.ps1`) pipes sample PreToolUse JSON into the hook and checks the exit code: 43 cases, all as expected (existing rules still block; each new rule blocks its samples; `readonly` calls, `terraform plan -lock=false`, `git status` and `ls .aws-sam` pass). This verifies the hook text matching only. It runs no AWS call and does not show what Claude Code does at runtime.
+- Runtime check on 2026-10-12, with Claude Code started through the `cc` command on the branch `ci/hook-profile-guard`, reported by Claude Code and the operator (raw output not stored):
+  - `aws sts get-caller-identity --profile tf-admin` was refused by the hook before running, with the message "Blocked by block-writes hook (aws profile other than readonly)".
+  - Reading `~/.aws/config` with the Read tool was refused by the deny rule ("File is in a directory that is denied by your permission settings"). For the Read tool this also shows that `~` expands to the user profile directory on this Windows machine.
+  - `aws sts get-caller-identity --profile readonly` ran and returned the read-only role.
+
+### Not verified
+
+- That the deny rules apply to PowerShell cmdlets (`Get-Content`, `gc`, `Select-String`); the Claude Code docs name `cat`, `head`, `tail`, `sed` and `tee`. The hook rule on the `.aws` text covers cmdlets in Bash and PowerShell command lines either way.
+- That the PowerShell tool passes its text in `tool_input.command` (the hook reads only that field).
+
+### Limits (not a sandbox)
+
+- Scripts: a script that Claude Code writes and runs, or any subprocess that opens files itself, is not seen; the hook scans command text, and the Write and Edit tools do not pass through it.
+- Obfuscation: paths or profile names built from string pieces, encoded payloads and variable indirection can get past the text rules. A `--profile` value held in a variable is blocked (fail closed), a `.aws` path assembled from pieces is not.
+- When Claude Code is started with the `cc` command, `AWS_PROFILE` is `readonly`, so a bare `aws` call uses `readonly`. The gap exists only if `claude` is started without `cc` and with no `AWS_PROFILE`: then a bare `aws` call uses the `default` profile, whose access key alone is unauthorized for EC2 (see "Verified" above) but is not `readonly`. Closing it would block every bare `aws` call and was left as an operator decision.
+- Environment dumps (`env`, `printenv`, `Get-ChildItem Env:`) are not blocked and would show credential variables if any are exported.
+- Only an OS-level sandbox enforces file access for all processes; it was not evaluated here.
