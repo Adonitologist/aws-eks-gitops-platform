@@ -190,7 +190,7 @@ The API endpoint is private-only, so run these on the stage 2 runner (see ADR 00
 
 Destroying a GitOps cluster strictly requires draining dynamic resources prior to invoking Terraform. Failure to do so will result in orphaned EC2 Spot instances and deadlocked VPC dependencies.
 
-Teardown is the reverse of the apply order: cluster stack (stage 2) first, then infra. Steps 1 to 5 need the private endpoint, so start the stage 2 runner and run them there (see ADR 0002). Step 6 runs from your workstation: it also destroys the runner.
+Teardown is the reverse of the apply order: cluster stack (stage 2) first, then infra. Steps 1 to 5 need the private endpoint, so start the stage 2 runner and run them there (see ADR 0002). Steps 6 and 7 run from your workstation: step 7 also destroys the runner.
 
 Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on the runner; `--dry-run` previews it; set `ARGOCD_ALLOWED_CIDRS` so it prints the step 5 command with your CIDR). It stops with a clear error on any timeout or failed query, and never runs `terraform destroy`. The ALB check needs `tag:GetResources` on the runner role (stage 1 must be applied with that policy). The manual commands below are the fallback. The script was run live on 2026-10-11: ingress deleted and no ALB left after about 31 s (not tested with live Karpenter nodes).
 
@@ -230,7 +230,14 @@ Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on t
    terraform destroy -var='argocd_allowed_cidrs=["203.0.113.10/32"]'
    ```
 
-6. **Destroy the infra stack (stage 1):**
+6. **Check for leftovers (gate before stage 1):**
+   Run from the workstation with the `readonly` or `default` profile. It is read-only (aws describe/list calls) and lists only ids.
+   ```powershell
+   .\scripts\teardown\check-leftovers.ps1
+   ```
+   Do not run step 7 on exit 1. A Karpenter node that was removed can leave an orphan ENI (status `available`, no attachment) that blocks deletion of the security groups and the VPC. After confirming the instance is terminated, delete the listed ENI by hand and re-run the check. After step 7, `-AfterDestroy` confirms nothing is left; a remaining `eks-cluster-sg-*` security group is deleted by hand once no ENI uses it. NAT gateways and EC2 instances are not checked (no verified cluster tag).
+
+7. **Destroy the infra stack (stage 1):**
    ```bash
    cd stacks/infra
    terraform destroy
