@@ -194,6 +194,8 @@ Finding: in a pod, `nslookup kubernetes.default` returned NXDOMAIN from the clus
 
 Process: pass the operator profile per command with `--profile` instead of leaving it set in a terminal window.
 
+Cost (operator-reported from Cost Explorer; daily granularity, UnblendedCost, UTC date 2026-10-12, grouped by service and record type): about USD 0.68 gross, marked Estimated and account-wide, so it may include another project of the same account. EC2-Other (includes the NAT gateway) 0.207, EC2-Compute 0.206, VPC 0.131, EKS 0.098, ELB 0.023, Cost Explorer, KMS and S3 together about 0.012. Credits offset the gross usage almost entirely, net about USD 0. The figures are for the whole UTC day 2026-10-12 of the account, which contains the timeline above; they are not limited to those hours. Control query for 2026-10-13 (partial day, Cost Explorer data lags): only AWS Glue at USD 0 and no EKS, EC2, ELB, VPC or NAT lines; consistent with a clean destroy but not proof by itself, the independent resource checks above are. Not attributable to this test alone without cost allocation tags, and Estimated data may still change.
+
 NOT VERIFIED:
 
 - The `network-policy-agent` CPU and memory requests.
@@ -201,7 +203,6 @@ NOT VERIFIED:
 - A Terraform run longer than 1 hour.
 - The state of the labelled node while the `teardown-stage2.sh` wait loop waited (not captured).
 - Rejection of the ALB from a non-allowed network: from a phone on mobile data the ALB did not answer (timeout), observed by the operator, not independently verified.
-- Cost: Cost Explorer for 2026-10-12 will be added in a later PR.
 - Positive detection of the `-AfterDestroy` branch of `check-leftovers.ps1` (runner, managed nodes, NAT gateway, Elastic IP, VPC): it was only run when everything was already gone (negative case, OK). The default-mode instance filter was exercised positively (Karpenter node).
 
 ## Addendum 2026-10-12: account id in the state bucket name
