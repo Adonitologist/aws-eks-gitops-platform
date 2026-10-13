@@ -138,10 +138,13 @@ Reference table for the live test. The figures are Cost Explorer estimates, not 
 
 | Run | Duration and scope | Actual cost |
 |-----|--------------------|-------------|
-| Live test 2026-10-11 | about 1h10m, EKS + NAT + 2 system nodes + runner + up to 2 Karpenter nodes | see day total |
+| Earlier run, 2026-10-11 (before live test 2; ADR 0001 addendum 2026-10-11) | about 1h10m, EKS + NAT + 2 system nodes + runner + up to 2 Karpenter nodes | see day total |
 | Live test 2, 2026-10-11 | about 1h50m, apply 19:41 local to destroy end 21:29 local, including fixes; 117 + 4 resources; EKS + NAT + 2 system nodes + runner + 1 live Karpenter node | see day total |
+| Live test 3, 2026-10-12 | about 1h25m (see ADR 0001 addendum "2026-10-12: live test 3 results"); 117 + 4 resources; EKS + NAT + 2 system nodes + runner + 1 live Karpenter node | about USD 0.68 gross, estimated, account-wide, from Cost Explorer, covered by credits (net about 0); see below |
 
 Day total, not per run: Cost Explorer shows about USD 1.02 gross in Usage rows for 2026-10-11 UTC for the whole account, marked Estimated. It cannot be attributed to either live test without cost allocation tags, and Estimated data may still change. Of it, about USD 0.05 are Cost Explorer API calls. Covered 100% by AWS credits, net 0. Gross by service: EC2-Other 0.41, EC2-Compute 0.26, EKS 0.13, VPC 0.13, ELB 0.05. Data Transfer showed only a credit row (-0.038) with no Usage row, unexplained.
+
+Live test 3 (2026-10-12 UTC, Cost Explorer, daily granularity, UnblendedCost, marked Estimated, account-wide so it may include another project of the same account): about USD 0.68 gross. By service: EC2-Other (includes the NAT gateway) 0.207, EC2-Compute 0.206, VPC 0.131, EKS 0.098, ELB 0.023, Cost Explorer, KMS and S3 together about 0.012. Credits offset the gross usage almost entirely, net about USD 0. Control query for 2026-10-13 (partial day, Cost Explorer data lags): only AWS Glue at USD 0, no EKS, EC2, ELB, VPC or NAT lines; consistent with a clean destroy, which the independent resource checks of the ADR addendum already showed.
 
 Main hourly cost drivers, approximate AWS list prices (us-east-1, on-demand), NOT VERIFIED; check the AWS pricing pages and Billing before relying on them:
 
