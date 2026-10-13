@@ -4,7 +4,7 @@ This is a portfolio project maintained by one person on a best-effort basis. The
 
 ## Reporting a problem
 
-- If the GitHub Security tab offers "Report a vulnerability" for this repository, use it. Private vulnerability reporting was not enabled when this file was written.
+- Use the repository Security tab, "Report a vulnerability" (GitHub private vulnerability reporting).
 - Otherwise open an issue and describe the problem without sensitive details (no credentials, account data or exploit steps); the owner will follow up.
 
 ## What is not in this repository
