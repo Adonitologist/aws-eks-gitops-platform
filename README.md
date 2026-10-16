@@ -8,7 +8,18 @@
 
 A single-environment Amazon EKS platform built and operated by one person as a portfolio project. Terraform is split into two stacks: stage 1 creates the VPC, a private-endpoint EKS cluster and an SSM-only runner; stage 2 runs on that runner and installs the AWS Load Balancer Controller, Karpenter and Argo CD, which then syncs the manifests in this repository. The design decisions, trade-offs and live-test results are recorded in the [ADRs](docs/adr/). The platform was applied and destroyed in live tests (see the ADR 0001 addenda); it is a reference implementation, not a multi-team production platform.
 
-Sections: [What this demonstrates](#what-this-demonstrates), [Quick start](#quick-start), [Limitations](#limitations), [Cost](#cost), [Safe Teardown Protocol](#safe-teardown-protocol-cost-prevention), [How this repository is worked on](#how-this-repository-is-worked-on), [Author](#author).
+**Verified in live tests** (2026-10-11, 2026-10-12; operator-reported, raw terminal output is not stored in the repo):
+- Private endpoint operated through the SSM-only runner, stage 2 run on it: [fresh runner](docs/adr/0002-stage2-access-path.md#addendum-2026-10-12-fresh-runner), [live test 2](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-2-results), [live test 3](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results).
+- Karpenter node Ready in about 33 to 37 s (on-demand): [live test 2](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-2-results), [live test 3](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results).
+- Network policy enforcement (allow, cross-namespace deny, egress deny): [live test 3](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results).
+- Teardown script and leftover check: [live test 3](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results), [first script run](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-11-live-run-results).
+- Destroy ended with no leftover resources, with manual steps: [live test 2](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-2-results) needed two manual deletions during the stage 1 destroy; [live test 3](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results) needed an orphan ENI deleted by hand before the stage 1 destroy, which then ran with no manual intervention.
+
+[Limitations](#limitations) and not verified, product limits: TLS (HTTP only), stage 2 not planned in CI, monitoring and backup (none exist). Test limits: Argo CD self-heal revert, Spot denial, a Terraform run longer than 1 hour, the final Karpenter wait loop of `teardown-stage2.sh` on a real Karpenter node, positive detection of `check-leftovers.ps1 -AfterDestroy`, rejection of the ALB from a non-allowed network (operator observation only).
+
+Decisions and evidence: [ADR 0001](docs/adr/0001-private-eks-endpoint.md), [ADR 0002](docs/adr/0002-stage2-access-path.md), [ADR 0003](docs/adr/0003-operator-credentials.md).
+
+Sections: [What this demonstrates](#what-this-demonstrates), [Quick start](#quick-start), [Limitations](#limitations), [System Architecture](#system-architecture--gitops-flow), [Core Technical Highlights](#core-technical-highlights), [Architecture Diagram](#architecture-diagram), [Repository Structure](#repository-structure), [Operator credentials](#operator-credentials), [Deployment Instructions](#deployment-instructions), [Safe Teardown Protocol](#safe-teardown-protocol-cost-prevention), [Cost](#cost), [How this repository is worked on](#how-this-repository-is-worked-on), [Author](#author), [License](#license).
 
 ## What this demonstrates
 
@@ -132,34 +143,6 @@ Notes:
 * CI plans stage 1 only; it never plans or applies stage 2 and has no apply job.
 * `kubernetes/argocd-apps/root-app.yaml` is applied by hand once; Argo CD then syncs `kubernetes/workloads` from `main`.
 
-### Cost
-
-Reference table for the live test. The figures are Cost Explorer estimates, not an invoice.
-
-| Run | Duration and scope | Actual cost |
-|-----|--------------------|-------------|
-| Earlier run, 2026-10-11 (before live test 2; ADR 0001 addendum 2026-10-11) | about 1h10m, EKS + NAT + 2 system nodes + runner + up to 2 Karpenter nodes | see day total |
-| Live test 2, 2026-10-11 | about 1h50m, apply 19:41 local to destroy end 21:29 local, including fixes; 117 + 4 resources; EKS + NAT + 2 system nodes + runner + 1 live Karpenter node | see day total |
-| Live test 3, 2026-10-12 | about 1h25m (see ADR 0001 addendum "2026-10-12: live test 3 results"); 117 + 4 resources; EKS + NAT + 2 system nodes + runner + 1 live Karpenter node | about USD 0.68 gross, estimated, account-wide, from Cost Explorer, covered by credits (net about 0); see below |
-
-Day total, not per run: Cost Explorer shows about USD 1.02 gross in Usage rows for 2026-10-11 UTC for the whole account, marked Estimated. It cannot be attributed to either live test without cost allocation tags, and Estimated data may still change. Of it, about USD 0.05 are Cost Explorer API calls. Covered 100% by AWS credits, net 0. Gross by service: EC2-Other 0.41, EC2-Compute 0.26, EKS 0.13, VPC 0.13, ELB 0.05. Data Transfer showed only a credit row (-0.038) with no Usage row, unexplained.
-
-Live test 3 (2026-10-12 UTC, Cost Explorer, daily granularity, UnblendedCost, marked Estimated, account-wide so it may include another project of the same account): about USD 0.68 gross. By service: EC2-Other (includes the NAT gateway) 0.207, EC2-Compute 0.206, VPC 0.131, EKS 0.098, ELB 0.023, Cost Explorer, KMS and S3 together about 0.012. Credits offset the gross usage almost entirely, net about USD 0. Control query for 2026-10-13 (partial day, Cost Explorer data lags): only AWS Glue at USD 0, no EKS, EC2, ELB, VPC or NAT lines; consistent with a clean destroy, which the independent resource checks of the ADR addendum already showed.
-
-Main hourly cost drivers, approximate AWS list prices (us-east-1, on-demand), NOT VERIFIED; check the AWS pricing pages and Billing before relying on them:
-
-| Driver | Approx. hourly price (NOT VERIFIED) |
-|--------|-------------------------------------|
-| EKS control plane | about USD 0.10 |
-| NAT gateway (single) | about USD 0.045, plus per-GB data processing |
-| System nodes, m7i-flex.large x 2 | about USD 0.10 each |
-| Karpenter nodes, m7i-flex.large or c7i-flex.large (up to 2) | about USD 0.09 to 0.10 each |
-| Stage 2 runner, t3.small (only while running) | about USD 0.02 |
-| ALB (Argo CD ingress) | about USD 0.02, plus LCU usage |
-| Public IPv4 addresses (NAT, ALB) | about USD 0.005 each |
-
-Not itemized: CloudWatch (flow logs, session logs), S3 state storage and data transfer. Use the [Safe Teardown Protocol](#safe-teardown-protocol-cost-prevention) to stop the charges.
-
 ## Repository Structure
 
 ```text
@@ -240,7 +223,7 @@ The stacks have separate states and must be applied in this order. Stage 2 reads
 
 ### Creating root-application
 
-Proposed procedure, NOT VERIFIED against the live run. No Terraform resource creates `root-application`, so it is applied by hand after the stage 2 apply, with `kubectl` against the private endpoint (stage 2 runs on the runner; step 2 of Deployment Instructions says to clone this repository there):
+Verified in live runs: the root application was created with `kubectl apply -f` and was Synced/Healthy ([2026-10-11](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-11-live-run-results)), was Synced and Healthy in [live test 2](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-2-results), and was created and first synced in [live test 3](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results). No Terraform resource creates `root-application`, so it is applied by hand after the stage 2 apply, with `kubectl` against the private endpoint (stage 2 runs on the runner; step 2 of Deployment Instructions says to clone this repository there):
 
 ```bash
 kubectl apply -f kubernetes/argocd-apps/root-app.yaml
@@ -279,7 +262,7 @@ Destroying a GitOps cluster strictly requires draining dynamic resources prior t
 
 Teardown is the reverse of the apply order: cluster stack (stage 2) first, then infra. Steps 1 to 5 need the private endpoint, so start the stage 2 runner and run them there (see ADR 0002). Steps 6 and 7 run from your workstation: step 7 also destroys the runner.
 
-Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on the runner; `--dry-run` previews it; set `ARGOCD_ALLOWED_CIDRS` so it prints the step 5 command with your CIDR). It stops with a clear error on any timeout or failed query, and never runs `terraform destroy`. The ALB check needs `tag:GetResources` on the runner role (stage 1 must be applied with that policy). The manual commands below are the fallback. The script was run live on 2026-10-11: in one run the ingress was deleted and no ALB was left after about 31 s; in the run with a live Karpenter node the ALB was gone in about 24 s and deleting the root application took about 35 s, and its cascade removed the NodePool, EC2NodeClass and the node. The script's final Karpenter wait loop passed immediately, so it was not exercised.
+Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on the runner; `--dry-run` previews it; set `ARGOCD_ALLOWED_CIDRS` so it prints the step 5 command with your CIDR). It stops with a clear error on any timeout or failed query, and never runs `terraform destroy`. The ALB check needs `tag:GetResources` on the runner role (stage 1 must be applied with that policy). The manual commands below are the fallback. The script was run live on 2026-10-11: in one run the ingress was deleted and no ALB was left after about 31 s; in the run with a live Karpenter node the ALB was gone in about 24 s and deleting the root application took about 35 s, and its cascade removed the NodePool, EC2NodeClass and the node. In live test 2 the script's final Karpenter wait loop passed immediately because the root-application cascade had already removed the node; in live test 3 the loop ran with a stub, a timeout path and a success run on a labelled managed node, but not on a real Karpenter node, because the cascade removed it again.
 
 1. **Delete the Argo CD ingress and the root application:**
    The Argo CD ALB ingress is created by the Helm release (stage 2), not by Argo CD, so deleting the root application does not remove it. Confirm the ingress name, then delete it so the AWS Load Balancer Controller dismantles its ALB. Then delete the root application, which removes the NodePool and EC2NodeClass it syncs from `kubernetes/workloads`.
@@ -331,6 +314,22 @@ Steps 1 to 3 are automated by `scripts/teardown/teardown-stage2.sh` (run it on t
    ```
 
 > PowerShell note: quote the flag, for example `"-out=destroy.tfplan"`. A stale plan must be re-planned and applied immediately.
+
+## Cost
+
+Reference table for the live test. The figures are Cost Explorer estimates, not an invoice.
+
+| Run | Duration and scope | Actual cost |
+|-----|--------------------|-------------|
+| Earlier run, 2026-10-11 (before live test 2; ADR 0001 addendum 2026-10-11) | duration and scope not recorded in an ADR | see day total |
+| Live test 2, 2026-10-11 | about 1h50m, apply 19:41 local to destroy end 21:29 local, including fixes; 117 + 4 resources; EKS + NAT + 2 system nodes + runner + 1 live Karpenter node | see day total |
+| Live test 3, 2026-10-12 | about 1h25m (see ADR 0001 addendum "2026-10-12: live test 3 results"); 117 + 4 resources; EKS + NAT + 2 system nodes + runner + 1 live Karpenter node | about USD 0.68 gross, estimated, account-wide, from Cost Explorer, covered by credits (net about 0); see below |
+
+Day total, not per run: Cost Explorer shows about USD 1.02 gross in Usage rows for 2026-10-11 UTC for the whole account, marked Estimated. It cannot be attributed to either live test without cost allocation tags, and Estimated data may still change. Of it, about USD 0.05 are Cost Explorer API calls. Covered 100% by AWS credits, net 0. Gross by service: EC2-Other 0.41, EC2-Compute 0.26, EKS 0.13, VPC 0.13, ELB 0.05. Data Transfer showed only a credit row (-0.038) with no Usage row, unexplained.
+
+Live test 3 (2026-10-12 UTC, Cost Explorer, daily granularity, UnblendedCost, marked Estimated, account-wide so it may include another project of the same account): about USD 0.68 gross. By service: EC2-Other (includes the NAT gateway) 0.207, EC2-Compute 0.206, VPC 0.131, EKS 0.098, ELB 0.023, Cost Explorer, KMS and S3 together about 0.012. Credits offset the gross usage almost entirely, net about USD 0. Control query for 2026-10-13 (partial day, Cost Explorer data lags): only AWS Glue at USD 0, no EKS, EC2, ELB, VPC or NAT lines; consistent with a clean destroy, which the independent resource checks of the ADR addendum already showed.
+
+Not itemized: CloudWatch (flow logs, session logs), S3 state storage and data transfer. Use the [Safe Teardown Protocol](#safe-teardown-protocol-cost-prevention) to stop the charges.
 
 ## How this repository is worked on
 
