@@ -84,4 +84,4 @@ Operator-reported from the live test of 2026-10-11; details in ADR 0001 and ADR 
 - The sample app runs as uid/gid 10101 with a read-only root filesystem (verified live).
 - A Karpenter node became Ready in about 33 s (`c7i-flex.large`, on-demand).
 - Stage 1 destroy needed two manual deletions: an orphan VPC CNI ENI and the EKS-created `eks-cluster-sg-*` security group (not in Terraform). Mitigation: `scripts/teardown/check-leftovers.ps1` and README Safe Teardown step 6 (PR #60).
-- Not exercised: the final Karpenter wait loop of `teardown-stage2.sh` (it passed immediately because the root-app cascade had already removed the node).
+- The final Karpenter wait loop of `teardown-stage2.sh` was exercised in live test 3 with a stub, a timeout path and a success run on a labelled managed node, but not on a real Karpenter node (the root-app cascade removed it first).
