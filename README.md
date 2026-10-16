@@ -60,6 +60,9 @@ Needs an AWS account, an S3 state bucket and the operator profiles described in 
 - No monitoring or backup module exists in `modules/`; metrics-server is not installed ([ADR 0001](docs/adr/0001-private-eks-endpoint.md), addendum 2026-10-11).
 - A Terraform run longer than the 1 hour operator session was not exercised ([ADR 0001](docs/adr/0001-private-eks-endpoint.md), live test 3 addendum).
 - The state bucket name contains the AWS account id by design; it was kept on purpose (see ADR 0001, "Addendum 2026-10-12: account id in the state bucket name").
+- The final Karpenter wait loop of `teardown-stage2.sh` was not exercised on a real Karpenter node; in live tests 2 and 3 the root-application cascade removed the node first ([live test 2](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-2-results), [live test 3](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results)).
+- Positive detection of `check-leftovers.ps1 -AfterDestroy` (runner, managed nodes, NAT gateway, Elastic IP, VPC) was not exercised; it only ran when everything was already gone ([live test 3, NOT VERIFIED list](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results)).
+- Rejection of the Argo CD ALB from a non-allowed network was observed by the operator only (phone on mobile data, timeout), not independently verified ([live test 2](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-2-results), [live test 3](docs/adr/0001-private-eks-endpoint.md#addendum-2026-10-12-live-test-3-results)).
 
 ## System Architecture & GitOps Flow
 
